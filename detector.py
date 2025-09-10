@@ -32,7 +32,10 @@ def select_folder():
         print("Selected folder:", folder_path)
 
 root = tk.Tk()
-root.title("TEM Experiment Folder Selector")
-button = tk.Button(root, text="Select Folder", command=select_folder)
-button.pack(padx=30, pady=30)
+root.title("TEM Atom Detector")
+root.geometry("500x400+200+100")         # Size and position
+root.configure(bg="#f0f0f0")             # Background color
+
+button = tk.Button(root, text="Select Folder", bg='#4caf50', fg='white', font=('Arial', 12, 'bold'))
+button.pack(padx=30, pady=100)
 root.mainloop()
