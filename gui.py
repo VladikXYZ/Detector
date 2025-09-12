@@ -7,8 +7,10 @@ class Window:
         folder_path = filedialog.askdirectory(title="Select Experiment Folder")
         if folder_path: self.folder = folder_path
             # print("Selected folder:", folder_path)
+        print(self.folder)
 
     def __init__(self):
+        self.folder = None
         root = tk.Tk()
         root.title("TEM Atom Detector")
         root.geometry("500x400+200+100")
@@ -18,4 +20,3 @@ class Window:
                            command=self.select_folder)
         button.pack(padx=30, pady=100)
         root.mainloop()
-        folder = None
