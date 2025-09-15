@@ -5,13 +5,13 @@ from detector import Detector
 
 class Window:
     def select_source(self):
-        folder_path = filedialog.askdirectory(title="Select source directory")
+        folder_path = filedialog.askdirectory(title="Select source directory",initialdir=os.getcwd())
         if folder_path:
             self.src_dir = folder_path
             print(self.src_dir)
 
     def select_destination(self):
-        folder_path = filedialog.askdirectory(title="Select destination directory")
+        folder_path = filedialog.askdirectory(title="Select destination directory", initialdir=os.getcwd())
         if folder_path:
             self.dst_dir = folder_path
             print(self.dst_dir)
