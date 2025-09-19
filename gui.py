@@ -2,7 +2,6 @@ import os
 import tkinter as tk
 from tkinter import filedialog
 from detector import Detector
-
 class Window:
     def select_source(self):
         folder_path = filedialog.askdirectory(title="Select source directory",initialdir=os.getcwd())
