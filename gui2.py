@@ -1,104 +1,13 @@
-# import json
-# import os
-# import tkinter as tk
-# from tkinter import filedialog
-#
-#
-# STATE_FILE = "directories.json"
-#
-#
-# class Window:
-#     def __init__(self):
-#     # Create main application window
-#         self.root = tk.Tk()
-#         root = self.root
-#         root.title('Directory Selector GUI')
-#
-#         # Callback functions to select directories
-#
-#         last = load_last_dirs()
-#         # StringVars to update label text
-#         tk.Label(root, text='Source Directory:').grid(row=0, column=0, padx=5, pady=5, sticky='w')
-#         self.source_label_var = tk.StringVar(value=last["source"])
-#         source_label = tk.Label(root, textvariable=self.source_label_var, width=50, anchor='w')
-#         source_label.grid(row=0, column=1, padx=5, pady=5)
-#         tk.Button(root, text='Select', command=self.select_source_dir).grid(row=0, column=2, padx=5, pady=5)
-#
-#         # Output directory row
-#         tk.Label(root, text='Output Directory:').grid(row=1, column=0, padx=5, pady=5, sticky='w')
-#         self.output_label_var = tk.StringVar(value=last["output"])
-#         output_label = tk.Label(root, textvariable=self.output_label_var, width=50, anchor='w')
-#         output_label.grid(row=1, column=1, padx=5, pady=5)
-#         tk.Button(root, text='Select', command=self.select_output_dir).grid(row=1, column=2, padx=5, pady=5)
-#
-#         vcmd = (root.register(self.validate_spinbox), '%P')
-#
-#         tk.Label(root, text="Minimal size:")
-#         min_var = tk.StringVar(value="1")
-#         min_spinbox = tk.Spinbox(root, from_=1, to=100, textvariable=min_var, validate="key", validatecommand=vcmd)
-#
-#         tk.Label(root, text="Maximal size:")
-#         max_var = tk.StringVar(value="10")
-#         max_spinbox = tk.Spinbox(root, from_=1, to=100, textvariable=max_var, validate="key", validatecommand=vcmd)
-#
-#         tk.Button(root, text='Process', command=self.process_directories).grid(row=4, column=0, columnspan=3, pady=10)
-#
-#         # Start the GUI loop
-#
-#         root.protocol("WM_DELETE_WINDOW", self.on_close)
-#         root.mainloop()
-#
-#     def process_directories(self):
-#         source = self.source_label_var.get()
-#         output = self.output_label_var.get()
-#         print(f"Process source: {source}")
-#         print(f"Process output: {output}")
-#
-#     def select_source_dir(self):
-#         dirname = filedialog.askdirectory()
-#         if dirname:
-#             self.source_label_var.set(dirname)
-#
-#     def select_output_dir(self):
-#         dirname = filedialog.askdirectory()
-#         if dirname:
-#             self.output_label_var.set(dirname)
-#
-#     def on_close(self):
-#         # Save the last directories when closing
-#         save_last_dirs(self.source_label_var.get(), self.output_label_var.get())
-#         self.root.destroy()
-#
-#     def validate_spinbox(new_val):
-#         return new_val.isdigit() or new_val == ""
-#
-# def load_last_dirs():
-#     if os.path.exists(STATE_FILE):
-#         with open(STATE_FILE, "r") as f:
-#             return json.load(f)
-#     return {"source": "None", "output": "None"}
-#
-# def save_last_dirs(source, output):
-#     with open(STATE_FILE, "w") as f:
-#         json.dump({"source": source, "output": output}, f)
 import json
 import os
 import sys
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
+from detector import process_sample, RedirectStdout
+
 STATE_FILE = "directories.json"
-
-class RedirectStdout:
-    def __init__(self, text_widget):
-        self.text_widget = text_widget
-
-    def write(self, string):
-        self.text_widget.insert(tk.END, string)
-        self.text_widget.see(tk.END)  # Auto-scroll to the end
-
-    def flush(self):
-        pass  # Required for file-like object
 
 class Window:
     def __init__(self):
@@ -164,10 +73,13 @@ class Window:
             messagebox.showerror("Error", "Minimal size must be smaller than maximal size.")
             return
 
-        print(f"Process source: {source}")
-        print(f"Process output: {output}")
-        print(f"Minimal size: {min_val}")
-        print(f"Maximal size: {max_val}")
+        # print(f"Process source: {source}")
+        # print(f"Process output: {output}")
+        # print(f"Minimal size: {min_val}")
+        # print(f"Maximal size: {max_val}")
+        #self.det.process(self.source_label_var.get())
+        threading.Thread(target=process_sample, args=(source, output, sys.stdout), daemon=True).start()
+
 
     def select_source_dir(self):
         dirname = filedialog.askdirectory()
