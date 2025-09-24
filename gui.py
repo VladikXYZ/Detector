@@ -1,6 +1,6 @@
 import os
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 from detector import Detector
 class Window:
     def select_source(self):
@@ -17,7 +17,7 @@ class Window:
 
     def process_images(self):
         if self.src_dir is None:
-            tk.messagebox.showinfo("Info Popup", "Please select source directory.")
+            messagebox.showinfo("Info Popup", "Please select source directory.")
         else:
             self.detector.process(self.src_dir)
 

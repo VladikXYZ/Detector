@@ -1,5 +1,5 @@
-import gui
+import gui2
 
 
 
-window = gui.Window()
+window = gui2.Window()
