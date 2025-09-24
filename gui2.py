@@ -83,10 +83,22 @@
 #         json.dump({"source": source, "output": output}, f)
 import json
 import os
+import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
 STATE_FILE = "directories.json"
+
+class RedirectStdout:
+    def __init__(self, text_widget):
+        self.text_widget = text_widget
+
+    def write(self, string):
+        self.text_widget.insert(tk.END, string)
+        self.text_widget.see(tk.END)  # Auto-scroll to the end
+
+    def flush(self):
+        pass  # Required for file-like object
 
 class Window:
     def __init__(self):
@@ -126,7 +138,11 @@ class Window:
                                       validate="key", validatecommand=vcmd)
         self.max_spinbox.grid(row=3, column=1, sticky='w', padx=5, pady=5)
 
-        tk.Button(root, text='Process', command=self.process_directories).grid(row=4, column=0, columnspan=3, pady=10)
+        tk.Button(root, text='Process', command=self.process_directories).grid(row=2, column=2, rowspan=2, pady=10)
+
+        text = tk.Text(root, wrap='word', height=15, width=80)
+        text.grid(row=4, column=0, columnspan=3, sticky='w', padx=5, pady=5)
+        sys.stdout = RedirectStdout(text)
 
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         root.mainloop()
