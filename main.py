@@ -1,5 +1,7 @@
+import tkinter
+
 import gui
 
 
-
-window = gui.Window()
+root = tkinter.Tk()
+window = gui.Window(root)

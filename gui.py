@@ -10,10 +10,9 @@ from detector import process_sample, RedirectStdout
 STATE_FILE = "directories.json"
 
 class Window:
-    def __init__(self):
+    def __init__(self, root):
+        self.root = root
         # Create main application window
-        self.root = tk.Tk()
-        root = self.root
         root.title('Directory Selector GUI')
 
         last = load_last_dirs()

@@ -14,6 +14,7 @@ def preprocess(args) -> tuple:
     img = clahe(img)
     img = invert(img)
     inv, bth = otsu(img)
+    sleep(1)
     return (inv, scale, bth)
 
 

@@ -41,7 +41,7 @@ def process_sample(src_dir, res_dir, stdout, verbose=False):
     start = time.time()
     total = len(process)
     last_line = stdout.last_line()
-    print("")
+    print(f"Preprocessing progress: {0}/{total}")
 
     with ProcessPoolExecutor(max_workers=2) as executor:
         futures = [executor.submit(preprocess, p) for p in process]
