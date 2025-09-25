@@ -90,15 +90,15 @@ def _parse_scale(path):
             return scale
     raise Exception(f"{path} is not a tif file")
 
-def mser_process(args):
-    img, scale = args
-    mina = max(1, int(MIN_AREA / (scale ** 2)))
-    maxa= max(1, int(MAX_AREA / (scale ** 2)))
-    mser = cv2.MSER_create(min_area=mina, max_area=maxa,
-                           delta=DELTA, max_variation=MAX_VAR)
-    _, bboxes = mser.detectRegions(img)
-    # fallback detection if nothing is detected
-    if len(bboxes) == 0:
-        y, x = np.unravel_index(np.argmin(img), img.shape)
-        return np.asarray([[x, y, 1, 1]])
-    return bboxes
+# def mser_process(args):
+#     img, scale = args
+#     mina = max(1, int(MIN_AREA / (scale ** 2)))
+#     maxa= max(1, int(MAX_AREA / (scale ** 2)))
+#     mser = cv2.MSER_create(min_area=mina, max_area=maxa,
+#                            delta=DELTA, max_variation=MAX_VAR)
+#     _, bboxes = mser.detectRegions(img)
+#     # fallback detection if nothing is detected
+#     if len(bboxes) == 0:
+#         y, x = np.unravel_index(np.argmin(img), img.shape)
+#         return np.asarray([[x, y, 1, 1]])
+#     return bboxes
