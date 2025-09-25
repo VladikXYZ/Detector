@@ -35,8 +35,10 @@ class RedirectStdout:
         pass
 
 def process_sample(src, out, m, M, stdout):
+
+    experiment = (os.path.basename(src)).split(".")[-1]
+    print(experiment)
     src = src + "/"
-    experiment = (os.path.basename(out)).split(".")[-1]
     out = out + "/" + experiment + "/"
     os.makedirs(out, exist_ok=True)
     files = [x for x in os.listdir(src) if x.endswith(".tif")]
