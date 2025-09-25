@@ -43,7 +43,7 @@ def process_sample(src_dir, res_dir, stdout, verbose=False):
     last_line = stdout.last_line()
     print(f"Preprocessing progress: {0}/{total}")
 
-    with ProcessPoolExecutor(max_workers=2) as executor:
+    with ProcessPoolExecutor() as executor:
         futures = [executor.submit(preprocess, p) for p in process]
         completed = 0
         for future in as_completed(futures):
@@ -51,9 +51,28 @@ def process_sample(src_dir, res_dir, stdout, verbose=False):
             completed += 1
             stdout.delete_line(last_line)
             print(f"Preprocessing progress: {completed}/{total}")
-            # You can collect or process `result` as needed
             prep.append(result)
-    print(len(prep))
+    sp_end = time.time()
+
+    # results = []
+    # with ProcessPoolExecutor() as executor:
+    #     futures = [executor.submit(mser_process, p) for p in prep]
+    #     completed = 0
+    #     for future in as_completed(futures):
+    #         result = future.result()
+    #         completed += 1
+    #         stdout.delete_line(last_line)
+    #         print(f"Preprocessing progress: {completed}/{total}")
+    #         results.append(result)
+
+
+    pr_end = time.time()
+
+    # print(f"It took {end - start:.3f} and {len(process)} files were processed.")
+    # print(f"Total detections: {len(experiment)}")
+    print(f"Preprocessing:  {sp_end - start}")
+    # print(f"Processing:     {pr_end - sp_end:.3f}")
+    # print(f"Postprocessing: {end - pr_end:.3f}")
 
 
 def _parse_scale(path):
@@ -70,3 +89,16 @@ def _parse_scale(path):
             scale = NM_PXL / nm_pxl
             return scale
     raise Exception(f"{path} is not a tif file")
+
+def mser_process(args):
+    img, scale = args
+    mina = max(1, int(MIN_AREA / (scale ** 2)))
+    maxa= max(1, int(MAX_AREA / (scale ** 2)))
+    mser = cv2.MSER_create(min_area=mina, max_area=maxa,
+                           delta=DELTA, max_variation=MAX_VAR)
+    _, bboxes = mser.detectRegions(img)
+    # fallback detection if nothing is detected
+    if len(bboxes) == 0:
+        y, x = np.unravel_index(np.argmin(img), img.shape)
+        return np.asarray([[x, y, 1, 1]])
+    return bboxes

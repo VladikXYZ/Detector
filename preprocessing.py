@@ -1,12 +1,12 @@
 from time import sleep
-
 import cv2
 import numpy as np
+# from config import CLAHE_LIM, KERNEL, U8_MAX
 
-from config import CLAHE_LIM, KERNEL, U8_MAX
+CLAHE_LIM = 2.5
+KERNEL = (40, 40)
+U8_MAX = 255
 
-
-# preprocessing image (potentially splitting into patches)
 def preprocess(args) -> tuple:
     f, scale = args
     img = load_uint(f)
@@ -14,17 +14,13 @@ def preprocess(args) -> tuple:
     img = clahe(img)
     img = invert(img)
     inv, bth = otsu(img)
-    sleep(1)
     return (inv, scale, bth)
-
 
 # loading image in np.uint8 format
 def load_uint(path: str):
     result = cv2.imread(path, cv2.IMREAD_UNCHANGED)
     if result is None:
         raise Exception(f"Cannot found file: {path}")
-    if len(result.shape) >= 3:
-        result = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
 
     result = result.astype(dtype=np.float32)
     mmax = np.max(result)
