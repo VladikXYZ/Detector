@@ -1,14 +1,9 @@
 import os
 import time
-import tkinter
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from itertools import accumulate
-from turtle import pd
 
 import tifffile
 import xml.etree.ElementTree as XML_parser
-
-from tqdm import tqdm
 from preprocessing import preprocess
 
 NM_PXL = 64
@@ -48,7 +43,7 @@ def process_sample(src_dir, res_dir, stdout, verbose=False):
     last_line = stdout.last_line()
     print("")
 
-    with ProcessPoolExecutor(max_workers=1) as executor:
+    with ProcessPoolExecutor(max_workers=2) as executor:
         futures = [executor.submit(preprocess, p) for p in process]
         completed = 0
         for future in as_completed(futures):
