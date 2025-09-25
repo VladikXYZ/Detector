@@ -5,7 +5,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-from detector import process_sample, RedirectStdout
+from detector import RedirectStdout, process_sample
 
 STATE_FILE = "directories.json"
 
@@ -35,14 +35,14 @@ class Window:
         # Minimal cluster size label + spinbox
         tk.Label(root, text="Minimal size:").grid(row=2, column=0, sticky='w', padx=5, pady=5)
         self.min_var = tk.StringVar(value="1")
-        self.min_spinbox = tk.Spinbox(root, from_=1, to=100, increment=0.1, textvariable=self.min_var,
+        self.min_spinbox = tk.Spinbox(root, from_=0.2, to=50, increment=0.1, textvariable=self.min_var,
                                       validate="key", validatecommand=vcmd)
         self.min_spinbox.grid(row=2, column=1, sticky='w', padx=5, pady=5)
 
         # Maximal cluster size label + spinbox
         tk.Label(root, text="Maximal size:").grid(row=3, column=0, sticky='w', padx=5, pady=5)
         self.max_var = tk.StringVar(value="10")
-        self.max_spinbox = tk.Spinbox(root, from_=1, to=100, increment=0.1, textvariable=self.max_var,
+        self.max_spinbox = tk.Spinbox(root, from_=0.2, to=50, increment=0.1, textvariable=self.max_var,
                                       validate="key", validatecommand=vcmd)
         self.max_spinbox.grid(row=3, column=1, sticky='w', padx=5, pady=5)
 
@@ -68,7 +68,9 @@ class Window:
         if output == "None":
             messagebox.showerror("No output", "Please select output directory")
             return
-        if float(min_val) > float(max_val):
+        m = float(min_val)
+        M = float(max_val)
+        if m > M:
             messagebox.showerror("Error", "Minimal size must be smaller than maximal size.")
             return
 
@@ -77,7 +79,7 @@ class Window:
         # print(f"Minimal size: {min_val}")
         # print(f"Maximal size: {max_val}")
         #self.det.process(self.source_label_var.get())
-        threading.Thread(target=process_sample, args=(source, output, sys.stdout), daemon=True).start()
+        threading.Thread(target=process_sample, args=(source, output, m, M, sys.stdout), daemon=True).start()
 
 
     def select_source_dir(self):
