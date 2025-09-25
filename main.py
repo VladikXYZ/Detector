@@ -2,6 +2,6 @@ import tkinter
 
 import gui
 
-
-root = tkinter.Tk()
-window = gui.Window(root)
+if __name__ == "__main__":
+    root = tkinter.Tk()
+    window = gui.Window(root)
