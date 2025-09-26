@@ -46,7 +46,9 @@ class Window:
                                       validate="key", validatecommand=vcmd)
         self.max_spinbox.grid(row=3, column=1, sticky='w', padx=5, pady=5)
 
-        tk.Button(root, text='Process', command=self.process_directories).grid(row=2, column=2, rowspan=2, pady=10)
+        self.process_button = tk.Button(root, text='Process', command=self.process_directories)
+        self.process_button.grid(row=2, column=2, rowspan=2, pady=10)
+
 
         text = tk.Text(root, wrap='word', height=15, width=80)
         text.grid(row=4, column=0, columnspan=3, sticky='w', padx=5, pady=5)
@@ -73,13 +75,8 @@ class Window:
         if m > M:
             messagebox.showerror("Error", "Minimal size must be smaller than maximal size.")
             return
-
-        # print(f"Process source: {source}")
-        # print(f"Process output: {output}")
-        # print(f"Minimal size: {min_val}")
-        # print(f"Maximal size: {max_val}")
-        #self.det.process(self.source_label_var.get())
-        threading.Thread(target=process_sample, args=(source, output, m, M, sys.stdout), daemon=True).start()
+        self.process_button.config(state=tk.DISABLED)
+        threading.Thread(target=process_sample, args=(source, output, m, M, sys.stdout, self.process_button), daemon=True).start()
 
 
     def select_source_dir(self):

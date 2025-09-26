@@ -1,7 +1,8 @@
 import os
 import time
+import tkinter
 from concurrent.futures import ProcessPoolExecutor, as_completed
-
+import pandas as pd
 import cv2
 import numpy as np
 import tifffile
@@ -34,10 +35,10 @@ class RedirectStdout:
     def flush(self):
         pass
 
-def process_sample(src, out, m, M, stdout):
+def process_sample(src, out, m, M, stdout, process_button):
 
     experiment = (os.path.basename(src)).split(".")[-1]
-    print(experiment)
+    print(f"Processing {experiment} directory")
     src = src + "/"
     out = out + "/" + experiment + "/"
     os.makedirs(out, exist_ok=True)
@@ -45,47 +46,49 @@ def process_sample(src, out, m, M, stdout):
     paths = [src + x for x in files]
     scales = [_parse_scale(x) for x in paths]
     process = sorted(list(zip(paths, scales)), key=lambda x: x[1])
-    prep = []
-    start = time.time()
     total = len(process)
+    prep = [None]*total
+    results = [None]*total
+    ma = ((NM_PXL * m) / 2) ** 2 * np.pi
+    MA = ((NM_PXL * M) / 2) ** 2 * np.pi
+
     last_line = stdout.last_line()
     print(f"Preprocessing progress: {0}/{total}")
 
+    start = time.time()
     with ProcessPoolExecutor() as executor:
-        futures = [executor.submit(preprocess, p) for p in process]
+        # futures = [executor.submit(preprocess, p) for p in process]
+        futures = {executor.submit(preprocess, p): idx for idx, p in enumerate(process)}
         completed = 0
         for future in as_completed(futures):
+            idx = futures[future]
             result = future.result()
             completed += 1
             stdout.delete_line(last_line)
             print(f"Preprocessing progress: {completed}/{total}")
-            prep.append(result)
+            prep[idx] = result
     sp_end = time.time()
 
-    ma = ((NM_PXL*m)/2)**2 * np.pi
-    MA = ((NM_PXL*M)/2)**2 * np.pi
-
-
-    results = []
     last_line = stdout.last_line()
     print(f"Processing progress: {0}/{total}")
 
     with ProcessPoolExecutor() as executor:
-        futures = [executor.submit(mser_process, (img, scale, ma, MA)) for img, scale, _ in prep]
+        futures = {executor.submit(mser_process, (img, scale, ma, MA)): idx for idx,(img, scale, _) in enumerate(prep)}
         completed = 0
         for future in as_completed(futures):
+            idx = futures[future]
             result = future.result()
             completed += 1
             stdout.delete_line(last_line)
             print(f"Processing progress: {completed}/{total}")
-            results.append(result)
+            results[idx] = result
     pr_end = time.time()
 
     last_line = stdout.last_line()
     lengths = []
     print(f"Postprocessing progress: {0}/{total}")
     with ProcessPoolExecutor() as executor:
-        futures = [executor.submit(postprocess, (img, scale, bboxes, bth, "nice")) for (img, scale, bth), bboxes in zip(prep, results)]
+        futures = [executor.submit(postprocess, (img, scale, bboxes, bth, out+str(idx))) for idx, ((img, scale, bth), bboxes) in enumerate(zip(prep, results))]
         completed = 0
         for future in as_completed(futures):
             result = future.result()
@@ -94,6 +97,10 @@ def process_sample(src, out, m, M, stdout):
             print(f"Postprocessing progress: {completed}/{total}")
             lengths.append(result)
 
+    all_lengths = np.concatenate(lengths)
+    df = pd.DataFrame(all_lengths, columns=["Lengths"])
+    df.to_csv(out+"all_dets.csv", index=False)
+
     end = time.time()
     print(f"It took {end - start:.3f} and {total} files were processed.")
     print(f"Total detections: {len(lengths)}")
@@ -101,6 +108,7 @@ def process_sample(src, out, m, M, stdout):
     print(f"Processing:     {pr_end - sp_end:.3f}")
     print(f"Postprocessing: {end - pr_end:.3f}")
 
+    process_button.config(state=tkinter.NORMAL)
 
 def _parse_scale(path):
     if path.endswith(".tif"):

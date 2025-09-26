@@ -41,38 +41,38 @@ def postprocess(args) -> np.ndarray:
     lengths =  lengths.reshape((ws.shape[0], 1))
     # writing into config specified file
     all_data = np.concatenate((rects, lengths), axis=1)
-    # df = pd.DataFrame(all_data, columns=OUTPUT_FORMAT)
-    # df.to_csv(to_write, index=False)
+    df = pd.DataFrame(all_data, columns=OUTPUT_FORMAT)
+    df.to_csv(to_write+"_dets.csv", index=False)
     return lengths
 
 # converting circles to squares
-def circles_to_rects(circles, max_dims) -> np.ndarray:
-    cy, cx, rs = circles[:, 0], circles[:, 1], circles[:, 2]
-    lx = (cx - rs).astype(dtype=np.int32)
-    uy = (cy - rs).astype(dtype=np.int32)
-    a = (2 * rs).astype(dtype=np.int32)
-    rx = lx + a
-    by = uy + a
-    lx = np.where(lx <= 0, 0, lx)
-    uy = np.where(uy <= 0, 0, uy)
-
-    maxy, maxx = max_dims
-    rx = np.where(rx >= maxx, maxx, rx)
-    by = np.where(by >= maxy, maxy, by)
-    merged = np.stack((lx, uy, rx, by), dtype=np.int32, axis=1)
-    return merged
+# def circles_to_rects(circles, max_dims) -> np.ndarray:
+#     cy, cx, rs = circles[:, 0], circles[:, 1], circles[:, 2]
+#     lx = (cx - rs).astype(dtype=np.int32)
+#     uy = (cy - rs).astype(dtype=np.int32)
+#     a = (2 * rs).astype(dtype=np.int32)
+#     rx = lx + a
+#     by = uy + a
+#     lx = np.where(lx <= 0, 0, lx)
+#     uy = np.where(uy <= 0, 0, uy)
+#
+#     maxy, maxx = max_dims
+#     rx = np.where(rx >= maxx, maxx, rx)
+#     by = np.where(by >= maxy, maxy, by)
+#     merged = np.stack((lx, uy, rx, by), dtype=np.int32, axis=1)
+#     return merged
 
 # converting bounding boxes to rectangles
 # (defined by left upper corner and right bottom corner)
 def bboxes_to_rects(bboxes) -> np.ndarray:
-    x1 = bboxes[:, 0]
-    y1 = bboxes[:, 1]
+    lx = bboxes[:, 0]
+    uy = bboxes[:, 1]
     hs = bboxes[:, 3]
     ws = bboxes[:, 2]
 
-    x2 = x1 + ws
-    y2 = y1 + hs
-    rects = np.stack((x1, y1, x2, y2), axis=1, dtype=np.int32)
+    rx = lx + ws
+    by = uy + hs
+    rects = np.stack((lx, uy, rx, by), axis=1, dtype=np.int32)
     return rects
 
 # removing same and zero area rectangles
