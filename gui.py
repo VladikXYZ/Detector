@@ -5,13 +5,32 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-from detector import RedirectStdout, process_sample
+from detector import  process_sample
 
 STATE_FILE = "directories.json"
+class RedirectStdout:
+    def __init__(self, text_widget):
+        self.text_widget = text_widget
+
+    def write(self, s):
+        self.text_widget.insert("end", s)
+        self.text_widget.see("end")
+
+    def last_line(self):
+        return int(self.text_widget.index('end-1c').split('.')[0])
+
+    def delete_line(self, index):
+        self.text_widget.delete(f"{index}.0", f"{index+1}.0")
+
+    def flush(self):
+        pass
+
+
 
 class Window:
     def __init__(self, root):
         self.root = root
+        self.thread = None
         # Create main application window
         root.title('Directory Selector GUI')
 
@@ -51,7 +70,7 @@ class Window:
 
 
         text = tk.Text(root, wrap='word', height=15, width=80)
-        text.grid(row=4, column=0, columnspan=3, sticky='w', padx=5, pady=5)
+        text.grid(row=4, column=0, columnspan=2, sticky='w', padx=5, pady=5)
         sys.stdout = RedirectStdout(text)
 
         root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -75,8 +94,17 @@ class Window:
         if m > M:
             messagebox.showerror("Error", "Minimal size must be smaller than maximal size.")
             return
-        self.process_button.config(state=tk.DISABLED)
-        threading.Thread(target=process_sample, args=(source, output, m, M, sys.stdout, self.process_button), daemon=True).start()
+        self.process_button.config(state="disabled")
+        self.thread = threading.Thread(target=process_sample, args=(source, output, m, M), daemon=True)
+        self.thread.start()
+        self.check_thread()
+
+    def check_thread(self):
+        if self.thread.is_alive():
+            self.process_button.config(state="normal")
+            print("Finished")
+        else:
+            self.root.after(100, self.check_thread)
 
 
     def select_source_dir(self):

@@ -18,27 +18,10 @@ ALL_DETS = "all_dets.csv"
 DELTA = 1
 MAX_VAR = 100
 
-class RedirectStdout:
-    def __init__(self, text_widget):
-        self.text_widget = text_widget
-
-    def write(self, s):
-        self.text_widget.insert("end", s)
-        self.text_widget.see("end")
-
-    def last_line(self):
-        return int(self.text_widget.index('end-1c').split('.')[0])
-
-    def delete_line(self, index):
-        self.text_widget.delete(f"{index}.0", f"{index+1}.0")
-
-    def flush(self):
-        pass
-
-def process_sample(src, out, m, M, stdout, process_button):
+def process_sample(src, out, m, M):
 
     experiment = (os.path.basename(src)).split(".")[-1]
-    print(f"Processing {experiment} directory")
+    # print(f"Processing {experiment} directory")
     src = src + "/"
     out = out + "/" + experiment + "/"
     os.makedirs(out, exist_ok=True)
@@ -52,9 +35,6 @@ def process_sample(src, out, m, M, stdout, process_button):
     ma = ((NM_PXL * m) / 2) ** 2 * np.pi
     MA = ((NM_PXL * M) / 2) ** 2 * np.pi
 
-    last_line = stdout.last_line()
-    print(f"Preprocessing progress: {0}/{total}")
-
     start = time.time()
     with ProcessPoolExecutor() as executor:
         # futures = [executor.submit(preprocess, p) for p in process]
@@ -64,13 +44,9 @@ def process_sample(src, out, m, M, stdout, process_button):
             idx = futures[future]
             result = future.result()
             completed += 1
-            stdout.delete_line(last_line)
-            print(f"Preprocessing progress: {completed}/{total}")
             prep[idx] = result
     sp_end = time.time()
 
-    last_line = stdout.last_line()
-    print(f"Processing progress: {0}/{total}")
 
     with ProcessPoolExecutor() as executor:
         futures = {executor.submit(mser_process, (img, scale, ma, MA)): idx for idx,(img, scale, _) in enumerate(prep)}
@@ -79,22 +55,16 @@ def process_sample(src, out, m, M, stdout, process_button):
             idx = futures[future]
             result = future.result()
             completed += 1
-            stdout.delete_line(last_line)
-            print(f"Processing progress: {completed}/{total}")
             results[idx] = result
     pr_end = time.time()
 
-    last_line = stdout.last_line()
     lengths = []
-    print(f"Postprocessing progress: {0}/{total}")
     with ProcessPoolExecutor() as executor:
         futures = [executor.submit(postprocess, (img, scale, bboxes, bth, out+str(idx))) for idx, ((img, scale, bth), bboxes) in enumerate(zip(prep, results))]
         completed = 0
         for future in as_completed(futures):
             result = future.result()
             completed += 1
-            stdout.delete_line(last_line)
-            print(f"Postprocessing progress: {completed}/{total}")
             lengths.append(result)
 
     all_lengths = np.concatenate(lengths)
@@ -102,13 +72,13 @@ def process_sample(src, out, m, M, stdout, process_button):
     df.to_csv(out+"all_dets.csv", index=False)
 
     end = time.time()
-    print(f"It took {end - start:.3f} and {total} files were processed.")
-    print(f"Total detections: {len(lengths)}")
-    print(f"Preprocessing:  {sp_end - start}")
-    print(f"Processing:     {pr_end - sp_end:.3f}")
-    print(f"Postprocessing: {end - pr_end:.3f}")
+    # print(f"It took {end - start:.3f} and {total} files were processed.")
+    # print(f"Total detections: {len(lengths)}")
+    # print(f"Preprocessing:  {sp_end - start}")
+    # print(f"Processing:     {pr_end - sp_end:.3f}")
+    # print(f"Postprocessing: {end - pr_end:.3f}")
 
-    process_button.config(state=tkinter.NORMAL)
+    # return end - start, sp_end - start, pr_end - sp_end, end - pr_end, len(lengths)
 
 def _parse_scale(path):
     if path.endswith(".tif"):
