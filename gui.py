@@ -71,7 +71,7 @@ class Window:
 
         text = tk.Text(root, wrap='word', height=15, width=80)
         text.grid(row=4, column=0, columnspan=2, sticky='w', padx=5, pady=5)
-        sys.stdout = RedirectStdout(text)
+        # sys.stdout = RedirectStdout(text)
 
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         root.mainloop()
@@ -100,7 +100,7 @@ class Window:
         self.check_thread()
 
     def check_thread(self):
-        if self.thread.is_alive():
+        if not self.thread.is_alive():
             self.process_button.config(state="normal")
             print("Finished")
         else:
@@ -133,6 +133,3 @@ def load_last_dirs():
 def save_last_dirs(source, output):
     with open(STATE_FILE, "w") as f:
         json.dump({"source": source, "output": output}, f)
-
-if __name__ == "__main__":
-    Window()
