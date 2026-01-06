@@ -30,53 +30,33 @@ def process_sample(src, out, m, M):
     scales = [_parse_scale(x) for x in paths]
     process = sorted(list(zip(paths, scales)), key=lambda x: x[1])
     total = len(process)
-    prep = [None]*total
-    results = [None]*total
     ma = ((NM_PXL * m) / 2) ** 2 * np.pi
     MA = ((NM_PXL * M) / 2) ** 2 * np.pi
 
     start = time.time()
     with ProcessPoolExecutor() as executor:
-        # futures = [executor.submit(preprocess, p) for p in process]
-        futures = {executor.submit(preprocess, p): idx for idx, p in enumerate(process)}
-        completed = 0
-        for future in as_completed(futures):
-            idx = futures[future]
-            result = future.result()
-            completed += 1
-            prep[idx] = result
-    sp_end = time.time()
+        prep = list(executor.map(preprocess, process))
+        sp_end = time.time()
+        mser_args = ((img, scale, ma, MA) for (img, scale, _) in prep)
 
-
-    with ProcessPoolExecutor() as executor:
-        futures = {executor.submit(mser_process, (img, scale, ma, MA)): idx for idx,(img, scale, _) in enumerate(prep)}
-        completed = 0
-        for future in as_completed(futures):
-            idx = futures[future]
-            result = future.result()
-            completed += 1
-            results[idx] = result
-    pr_end = time.time()
-
-    lengths = []
-    with ProcessPoolExecutor() as executor:
-        futures = [executor.submit(postprocess, (img, scale, bboxes, bth, out+str(idx))) for idx, ((img, scale, bth), bboxes) in enumerate(zip(prep, results))]
-        completed = 0
-        for future in as_completed(futures):
-            result = future.result()
-            completed += 1
-            lengths.append(result)
+        results = list(executor.map(_mser_process, mser_args))
+        pr_end = time.time()
+        post_args = (
+            (p[0], p[1], r, p[2], f"{out}{idx}")
+            for idx, (p, r) in enumerate(zip(prep, results))
+        )
+        lengths = list(executor.map(postprocess, post_args))
 
     all_lengths = np.concatenate(lengths)
     df = pd.DataFrame(all_lengths, columns=["Lengths"])
     df.to_csv(out+"all_dets.csv", index=False)
 
     end = time.time()
-    # print(f"It took {end - start:.3f} and {total} files were processed.")
-    # print(f"Total detections: {len(lengths)}")
-    # print(f"Preprocessing:  {sp_end - start}")
-    # print(f"Processing:     {pr_end - sp_end:.3f}")
-    # print(f"Postprocessing: {end - pr_end:.3f}")
+    print(f"It took {end - start:.3f} and {total} files were processed.")
+    print(f"Total detections: {len(all_lengths)}")
+    print(f"Preprocessing:  {sp_end - start}")
+    print(f"Processing:     {pr_end - sp_end:.3f}")
+    print(f"Postprocessing: {end - pr_end:.3f}")
 
     # return end - start, sp_end - start, pr_end - sp_end, end - pr_end, len(lengths)
 
@@ -95,7 +75,7 @@ def _parse_scale(path):
             return scale
     raise Exception(f"{path} is not a tif file")
 
-def mser_process(args):
+def _mser_process(args):
     img, scale, ma, MA = args
     den = 1/(scale**2)
     ma = max(1, int(ma*den))
