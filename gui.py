@@ -8,40 +8,25 @@ from tkinter import filedialog, messagebox
 from detector import  process_sample
 
 STATE_FILE = "directories.json"
-class RedirectStdout:
-    def __init__(self, text_widget):
-        self.text_widget = text_widget
-
-    def write(self, s):
-        self.text_widget.insert("end", s)
-        self.text_widget.see("end")
-
-    def last_line(self):
-        return int(self.text_widget.index('end-1c').split('.')[0])
-
-    def delete_line(self, index):
-        self.text_widget.delete(f"{index}.0", f"{index+1}.0")
-
-    def flush(self):
-        pass
-
-
 
 class Window:
     def __init__(self, root):
         self.root = root
         self.thread = None
         # Create main application window
-        root.title('Directory Selector GUI')
+        root.title('Cluster detector')
 
         last = load_last_dirs()
 
+        # source directory
         tk.Label(root, text='Source Directory:').grid(row=0, column=0, padx=5, pady=5, sticky='w')
         self.source_label_var = tk.StringVar(value=last["source"])
         source_label = tk.Label(root, textvariable=self.source_label_var, width=50, anchor='w')
         source_label.grid(row=0, column=1, padx=5, pady=5)
         tk.Button(root, text='Select', command=self.select_source_dir).grid(row=0, column=2, padx=5, pady=5)
 
+
+        # output directory
         tk.Label(root, text='Output Directory:').grid(row=1, column=0, padx=5, pady=5, sticky='w')
         self.output_label_var = tk.StringVar(value=last["output"])
         output_label = tk.Label(root, textvariable=self.output_label_var, width=50, anchor='w')
@@ -68,11 +53,6 @@ class Window:
         self.process_button = tk.Button(root, text='Process', command=self.process_directories)
         self.process_button.grid(row=2, column=2, rowspan=2, pady=10)
 
-
-        text = tk.Text(root, wrap='word', height=15, width=80)
-        text.grid(row=4, column=0, columnspan=2, sticky='w', padx=5, pady=5)
-        # sys.stdout = RedirectStdout(text)
-
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         root.mainloop()
 
@@ -80,15 +60,14 @@ class Window:
         source = self.source_label_var.get()
         output = self.output_label_var.get()
 
-        min_val = self.min_var.get()
-        max_val = self.max_var.get()
-
         if source == "None":
             messagebox.showerror("No source", "Please select source directory")
             return
         if output == "None":
             messagebox.showerror("No output", "Please select output directory")
             return
+        min_val = self.min_var.get()
+        max_val = self.max_var.get()
         m = float(min_val)
         M = float(max_val)
         if m > M:
@@ -100,6 +79,7 @@ class Window:
         self.check_thread()
 
     def check_thread(self):
+        print("checking")
         if not self.thread.is_alive():
             self.process_button.config(state="normal")
             print("Finished")
@@ -109,13 +89,11 @@ class Window:
 
     def select_source_dir(self):
         dirname = filedialog.askdirectory()
-        if dirname:
-            self.source_label_var.set(dirname)
+        if dirname: self.source_label_var.set(dirname)
 
     def select_output_dir(self):
         dirname = filedialog.askdirectory()
-        if dirname:
-            self.output_label_var.set(dirname)
+        if dirname: self.output_label_var.set(dirname)
 
     def on_close(self):
         save_last_dirs(self.source_label_var.get(), self.output_label_var.get())
