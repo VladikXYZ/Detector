@@ -2,7 +2,9 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from config import NM_PXL, OUTPUT_FORMAT, ABOVE_AI_TH, MIN_LENGTH_TH
+ABOVE_AI_TH = 0.5
+MIN_LENGTH_TH = 1
+from config import NM_PXL, OUTPUT_FORMAT
 
 # postprocess (and merge patches)
 def postprocess(args) -> np.ndarray:

@@ -1,11 +1,10 @@
 import json
 import os
-import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-from detector import  process_sample
+from gemini import  ClusterDetector
 
 STATE_FILE = "directories.json"
 
@@ -13,6 +12,7 @@ class Window:
     def __init__(self, root):
         self.root = root
         self.thread = None
+        self.det = ClusterDetector()
         # Create main application window
         root.title('Cluster detector')
 
@@ -74,7 +74,7 @@ class Window:
             messagebox.showerror("Error", "Minimal size must be smaller than maximal size.")
             return
         self.process_button.config(state="disabled")
-        self.thread = threading.Thread(target=process_sample, args=(source, output, m, M), daemon=True)
+        self.thread = threading.Thread(target=self.det.process_sample, args=(source, output, m, M), daemon=True)
         self.thread.start()
         self.check_thread()
 
