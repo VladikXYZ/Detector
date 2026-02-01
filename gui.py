@@ -53,6 +53,9 @@ class Window:
         self.process_button = tk.Button(root, text='Process', command=self.process_directories)
         self.process_button.grid(row=2, column=2, rowspan=2, pady=10)
 
+        self.process_button = tk.Button(root, text='Edit', command=self.process_directories)
+        self.process_button.grid(row=4, column=1, rowspan=2, pady=10)
+
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         root.mainloop()
 
@@ -79,7 +82,7 @@ class Window:
         self.check_thread()
 
     def check_thread(self):
-        print("checking")
+        # print("checking")
         if not self.thread.is_alive():
             self.process_button.config(state="normal")
             print("Finished")

@@ -68,8 +68,8 @@ class ClusterDetector:
             output_filenames.append(fname)
 
         # Calculate area constraints
-        ma = ((NM_PXL * m) / 2) ** 2 * np.pi
-        MA = ((NM_PXL * M) / 2) ** 2 * np.pi
+        # ma = ((NM_PXL * m) / 2) ** 2 * np.pi
+        # MA = ((NM_PXL * M) / 2) ** 2 * np.pi
 
         start = time.time()
 
@@ -80,7 +80,7 @@ class ClusterDetector:
             sp_end = time.time()
 
             # Step 2: MSER Detection
-            mser_args = ((img, scale, ma, MA) for (img, scale, _) in prep)
+            mser_args = ((img, scale, m, M) for (img, scale, _) in prep)
             results = list(executor.map(self._mser_process, mser_args))
             pr_end = time.time()
 
@@ -135,7 +135,7 @@ class ClusterDetector:
         """
         f, scale = args
         img = load_uint(f)
-        img = scaled_blur(img, scale, cv2.INTER_LINEAR)
+        img = scaled_blur(img, 1, cv2.INTER_LINEAR)
         img = clahe(img)
         img = invert(img)
         inv, bth = otsu(img)
@@ -146,10 +146,12 @@ class ClusterDetector:
         """
         Runs MSER algorithm to find regions.
         """
-        img, scale, ma, MA = args
-        den = 1 / (scale ** 2)
-        ma = max(1, int(ma * den))
-        MA = max(1, int(MA * den))
+        img, scale, m, M = args
+        ma = (m / 2) ** 2 * np.pi
+        MA = (M / 2) ** 2 * np.pi
+        # den = 1 / (scale ** 2)
+        ma = max(1, int(ma))
+        MA = max(1, int(MA))
         mser = cv2.MSER_create(min_area=ma, max_area=MA, delta=DELTA, max_variation=MAX_VAR)
         _, bboxes = mser.detectRegions(img)
 
@@ -174,8 +176,7 @@ class ClusterDetector:
         ws = rects[:, 2] - rects[:, 0]
         hs = rects[:, 3] - rects[:, 1]
 
-        rescale = scale / NM_PXL
-        lengths = np.sqrt(ws * ws + hs * hs) * rescale
+        lengths = np.sqrt(ws * ws + hs * hs) * scale
         lengths = lengths.astype(dtype=np.float32)
         lengths = lengths.reshape((ws.shape[0], 1))
 
@@ -198,8 +199,8 @@ def _parse_scale(path):
             nm = float(cut.find('.//MicronbarValue').text)
             if unit == 'Micrometer': nm *= 1000
             nm_pxl = (w - x - OFFSET) / nm
-            scale = NM_PXL / nm_pxl
-            return scale
+            # scale = NM_PXL / nm_pxl
+            return nm_pxl
     raise Exception(f"{path} is not a tif file")
 
 
