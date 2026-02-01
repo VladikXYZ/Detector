@@ -15,12 +15,12 @@ OUTPUT_FORMAT = ["LX", "UY", "RX", "BY", "Length"]
 
 # Preprocessing constants
 CLAHE_LIM = 2.5
-KERNEL = (40, 40)
+KERNEL = (5, 5)
 U8_MAX = 255
 
 # Postprocessing constants
 ABOVE_AI_TH = 0.5
-MIN_LENGTH_TH = 1
+# MIN_LENGTH_TH = 1
 
 # Detection constants
 OFFSET = 55
@@ -293,5 +293,5 @@ def size_filtering(rects, scale):
     ws = rects[:, 2] - rects[:, 0]
     hs = rects[:, 3] - rects[:, 1]
     length = np.sqrt((ws * ws) + (hs * hs))
-    valid = np.where(length >= MIN_LENGTH_TH / scale, True, False)
+    valid = np.where(length >= scale, True, False)
     return rects[valid]
