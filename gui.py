@@ -141,7 +141,7 @@ class DetectorWindow(QWidget):
             # 2. Launch the editor as a separate process
             # This keeps the detector GUI responsive while editing
             try:
-                subprocess.Popen([sys.executable, "editor_app.py", fpath])
+                subprocess.Popen([sys.executable, "edit.py", fpath])
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Could not launch editor:\n{e}")
 

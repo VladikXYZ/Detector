@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import warnings
 import numpy as np
 import pandas as pd
 import tifffile
@@ -9,22 +10,18 @@ from napari.utils.notifications import show_info
 from magicgui import magicgui
 from PyQt6.QtWidgets import QApplication, QFileDialog
 
+# --- SILENCE WARNINGS ---
+# This ensures the console remains clean when we access the viewer internals
+# warnings.filterwarnings("ignore", category=FutureWarning, module="napari")
 
-# --- 1. DATA MANAGEMENT LAYER ---
 
+# --- 1. DATA MANAGEMENT ---
 class ExperimentSession:
-    """
-    Handles reading the JSON manifest and loading/saving specific files.
-    """
-
     def __init__(self, json_path):
         self.json_path = json_path
         self.root_dir = os.path.dirname(json_path)
-
         with open(json_path, "r") as f:
-            # The JSON is a direct list of image objects
             self.images_meta = json.load(f)
-
         self.total_images = len(self.images_meta)
         self.current_idx = 0
 
@@ -33,159 +30,112 @@ class ExperimentSession:
 
     def load_current_data(self):
         meta = self.get_current_meta()
+        img = tifffile.imread(os.path.join(self.root_dir, meta["filename"]))
 
-        # 1. Load Image
-        img_path = os.path.join(self.root_dir, meta["filename"])
-        # reading with tifffile is often safer for scientific tiffs than cv2
-        image_data = tifffile.imread(img_path)
-
-        # 2. Load Detections (CSV)
-        # JSON key is 'detections_csv_file' based on your upload
-        csv_filename = meta["detections_csv_file"]
-        csv_path = os.path.join(self.root_dir, csv_filename)
-
+        csv_path = os.path.join(self.root_dir, meta["detections_csv_file"])
+        rects = []
         if os.path.exists(csv_path):
             df = pd.read_csv(csv_path)
-            # Format: LX, UY, RX, BY, Length
-            # Napari expects: [[y1, x1], [y2, x2]] (top-left, bottom-right)
-            rects = []
             if not df.empty:
-                for _, row in df.iterrows():
-                    lx, uy, rx, by = row["LX"], row["UY"], row["RX"], row["BY"]
-                    # Napari format: [ [min_y, min_x], [max_y, max_x] ]
-                    rects.append([[uy, lx], [by, rx]])
+                for _, r in df.iterrows():
+                    rects.append([[r["UY"], r["LX"]], [r["BY"], r["RX"]]])
 
-            return image_data, np.array(rects), meta["scale"]
+        # Always return valid numpy array, even if empty
+        if not rects:
+            return img, np.empty((0, 2, 2)), meta["scale"]
 
-        return image_data, np.empty((0, 2, 2)), meta["scale"]
+        return img, np.array(rects), meta["scale"]
 
-    def save_current_detections(self, napari_rects):
-        """
-        Converts Napari rectangles back to your CSV format and saves.
-        """
-        meta = self.get_current_meta()
-        csv_path = os.path.join(self.root_dir, meta["detections_csv_file"])
+    def save_current_detections(self, rects):
+        csv_path = os.path.join(self.root_dir, self.get_current_meta()["detections_csv_file"])
+        data = []
+        for r in rects:
+            ys, xs = r[:, 0], r[:, 1]
+            uy, by, lx, rx = int(np.min(ys)), int(np.max(ys)), int(np.min(xs)), int(np.max(xs))
+            length = np.sqrt((rx - lx) ** 2 + (by - uy) ** 2)
+            data.append([lx, uy, rx, by, length])
 
-        data_rows = []
-
-        for r in napari_rects:
-            # Napari returns 4 corners. We simplify to min/max.
-            # r shape is usually (4, 2) => [[y, x], ...]
-            ys = r[:, 0]
-            xs = r[:, 1]
-            uy, by = int(np.min(ys)), int(np.max(ys))
-            lx, rx = int(np.min(xs)), int(np.max(xs))
-
-            # Recalculate Length (using simple Euclidean for now)
-            # Note: We use the pixel coordinates directly.
-            w = rx - lx
-            h = by - uy
-            length = np.sqrt(w ** 2 + h ** 2)
-
-            data_rows.append([lx, uy, rx, by, length])
-
-        df = pd.DataFrame(data_rows, columns=["LX", "UY", "RX", "BY", "Length"])
-        df.to_csv(csv_path, index=False)
-        print(f"Saved {len(df)} detections to {csv_path}")
+        pd.DataFrame(data, columns=["LX", "UY", "RX", "BY", "Length"]).to_csv(csv_path, index=False)
+        print(f"Saved to {csv_path}")
 
 
-# --- 2. GUI LAYER (NAPARI) ---
-
+# --- 2. GUI LAYER ---
 def run_editor(json_path):
     session = ExperimentSession(json_path)
-    viewer = napari.Viewer(title=f"Cluster Editor - {os.path.basename(json_path)}")
+    viewer = napari.Viewer(title="Cluster Editor")
 
-    # -- Helper to refresh view --
     def refresh_view():
-        viewer.layers.clear()
-
-        # Load data
-        img, rects, scale = session.load_current_data()
+        img, rects, _ = session.load_current_data()
         meta = session.get_current_meta()
-        fname = meta["filename"]
-        idx = session.current_idx + 1
-        total = session.total_images
 
-        # 1. Add Image Layer
-        viewer.add_image(img, name=f"{idx}/{total}: {fname}")
+        # Update Window Title
+        viewer.title = f"Editor - {session.current_idx + 1}/{session.total_images}: {meta['filename']}"
 
-        # 2. Add Shapes Layer (for Bounding Boxes)
-        # Edge color cyan, face color transparent for easy viewing
-        viewer.add_shapes(
-            rects,
-            shape_type='rectangle',
-            edge_color='cyan',
-            face_color='transparent',
-            edge_width=2,
-            name='Detections'
-        )
-        show_info(f"Loaded {fname} ({len(rects)} clusters)")
-
-    # -- GUI Controls --
-
-    @magicgui(call_button="< Previous")
-    def prev_image():
-        save_changes()  # Auto-save before moving
-        if session.current_idx > 0:
-            session.current_idx -= 1
-            refresh_view()
+        # 1. Update Image (Preserve Layer to keep settings)
+        if 'Image' in viewer.layers:
+            viewer.layers['Image'].data = img
         else:
-            show_info("Already at first image.")
+            viewer.add_image(img, name='Image')
 
-    @magicgui(call_button="Next >")
-    def next_image():
-        save_changes()  # Auto-save before moving
+        # 2. Update Detections (Preserve Layer to keep styles like edge width/color)
+        if 'Detections' in viewer.layers:
+            viewer.layers['Detections'].data = rects
+        else:
+            shapes = viewer.add_shapes(
+                rects,
+                shape_type='rectangle',
+                edge_color='cyan',
+                face_color='transparent',
+                edge_width=2,
+                name='Detections'
+            )
+            shapes.mode = 'select'
+
+        # --- FIX FOR UNDO (CTRL+Z) ---
+        # 1. Ensure the Detections layer is selected
+        viewer.layers.selection.active = viewer.layers['Detections']
+
+        # 2. IMPORTANT: Force focus back to the canvas.
+        # This prevents the "Next" button from stealing the keyboard shortcuts.
+        try:
+            viewer.window.qt_viewer.canvas.setFocus()
+        except Exception:
+            pass
+
+        show_info(f"Loaded {meta['filename']}")
+
+    def save():
+        if 'Detections' in viewer.layers:
+            session.save_current_detections(viewer.layers['Detections'].data)
+
+    # --- NAVIGATION ---
+
+    @viewer.bind_key('Right')
+    def next_img(v):
+        save()
         if session.current_idx < session.total_images - 1:
             session.current_idx += 1
             refresh_view()
         else:
-            show_info("Already at last image.")
+            show_info("End of Experiment")
 
-    @magicgui(call_button="Save Changes")
-    def save_changes():
-        # Get the shapes layer
-        if 'Detections' in viewer.layers:
-            layer = viewer.layers['Detections']
-            # data contains the coordinates
-            session.save_current_detections(layer.data)
-            show_info("Saved successfully.")
+    @viewer.bind_key('Left')
+    def prev_img(v):
+        save()
+        if session.current_idx > 0:
+            session.current_idx -= 1
+            refresh_view()
+        else:
+            show_info("Start of Experiment")
 
-    # Add buttons to the viewer window
-    viewer.window.add_dock_widget(prev_image, area='right')
-    viewer.window.add_dock_widget(next_image, area='right')
-    viewer.window.add_dock_widget(save_changes, area='right')
-
-    # Initial load
     refresh_view()
-
-    # Start app
     napari.run()
 
 
 if __name__ == "__main__":
-    # Create the Qt Application (Required for QFileDialog)
     app = QApplication(sys.argv)
-
-    fpath = None
-
-    # 1. Check if file path provided via command line (from gui.py)
-    if len(sys.argv) > 1:
-        potential_path = sys.argv[1]
-        if os.path.exists(potential_path) and potential_path.endswith(".json"):
-            fpath = potential_path
-
-    # 2. If no valid argument, open File Dialog
+    fpath = sys.argv[1] if len(sys.argv) > 1 else None
     if not fpath:
-        print("Please select the results.json file...")
-        fpath, _ = QFileDialog.getOpenFileName(
-            None,
-            "Select results.json",
-            "",
-            "JSON files (*.json)"
-        )
-
-    # 3. Launch Editor if we have a path
+        fpath, _ = QFileDialog.getOpenFileName(None, "Select results.json", "", "JSON (*.json)")
     if fpath:
         run_editor(fpath)
-    else:
-        print("No file selected. Exiting.")
