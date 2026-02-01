@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import threading
+import subprocess
 from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,
                              QGridLayout, QFileDialog, QDoubleSpinBox, QMessageBox)
 from PyQt6.QtCore import QTimer, Qt
@@ -17,7 +18,7 @@ class DetectorWindow(QWidget):
         super().__init__()
 
         self.setWindowTitle("Cluster Detector")
-        self.resize(500, 200)
+        self.resize(550, 200)  # Slightly wider to fit buttons
         self.thread = None
 
         # Load previous paths
@@ -48,31 +49,35 @@ class DetectorWindow(QWidget):
         btn_output.clicked.connect(self.select_output)
         layout.addWidget(btn_output, 1, 2)
 
-        # 3. Min Size Spinbox (Double for floats)
+        # 3. Min Size Row + PROCESS Button
         layout.addWidget(QLabel("Minimal size (nm):"), 2, 0)
+
         self.spin_min = QDoubleSpinBox()
         self.spin_min.setRange(0.1, 50.0)
         self.spin_min.setSingleStep(0.1)
         self.spin_min.setValue(1.0)
         layout.addWidget(self.spin_min, 2, 1)
 
-        # 4. Max Size Spinbox
+        self.btn_process = QPushButton("Process")
+        self.btn_process.clicked.connect(self.start_processing)
+        layout.addWidget(self.btn_process, 2, 2)
+
+        # 4. Max Size Row + EDIT Button
         layout.addWidget(QLabel("Maximal size (nm):"), 3, 0)
+
         self.spin_max = QDoubleSpinBox()
         self.spin_max.setRange(0.1, 50.0)
         self.spin_max.setSingleStep(0.1)
         self.spin_max.setValue(10.0)
         layout.addWidget(self.spin_max, 3, 1)
 
-        # 5. Process Button
-        self.btn_process = QPushButton("Process")
-        self.btn_process.clicked.connect(self.start_processing)
-        self.btn_process.setMinimumHeight(40)
-        layout.addWidget(self.btn_process, 4, 0, 1, 3)  # Span across all 3 columns
+        self.btn_edit = QPushButton("Edit Results")
+        self.btn_edit.clicked.connect(self.start_editor)
+        layout.addWidget(self.btn_edit, 3, 2)
 
         self.setLayout(layout)
 
-        # Timer to check thread status (replaces root.after)
+        # Timer to check thread status
         self.timer = QTimer()
         self.timer.timeout.connect(self.check_thread)
 
@@ -105,15 +110,13 @@ class DetectorWindow(QWidget):
 
         # UI updates
         self.btn_process.setEnabled(False)
-        self.btn_process.setText("Processing... Please Wait")
+        self.btn_process.setText("Running...")
         self.save_last_dirs()
 
         # Instantiate Manager
         manager = ClusterDetector()
 
         # Start Thread
-        # Note: daemon=False ensures processing finishes even if GUI closes abruptly,
-        # avoiding the 'interpreter shutdown' error.
         self.thread = threading.Thread(
             target=manager.process_sample,
             args=(self.source_dir, self.output_dir, m, M),
@@ -124,7 +127,26 @@ class DetectorWindow(QWidget):
         # Start checking the thread every 100ms
         self.timer.start(100)
 
+    def start_editor(self):
+        # 1. Ask user for the results.json file
+        start_dir = self.output_dir if self.output_dir else ""
+        fpath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select results.json to Edit",
+            start_dir,
+            "JSON files (*.json)"
+        )
+
+        if fpath:
+            # 2. Launch the editor as a separate process
+            # This keeps the detector GUI responsive while editing
+            try:
+                subprocess.Popen([sys.executable, "editor_app.py", fpath])
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not launch editor:\n{e}")
+
     def check_thread(self):
+        print("check")
         if self.thread and not self.thread.is_alive():
             self.timer.stop()
             self.btn_process.setEnabled(True)

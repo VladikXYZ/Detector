@@ -1,3 +1,4 @@
+import sys
 import os
 import json
 import numpy as np
@@ -6,6 +7,7 @@ import tifffile
 import napari
 from napari.utils.notifications import show_info
 from magicgui import magicgui
+from PyQt6.QtWidgets import QApplication, QFileDialog
 
 
 # --- 1. DATA MANAGEMENT LAYER ---
@@ -75,8 +77,7 @@ class ExperimentSession:
             lx, rx = int(np.min(xs)), int(np.max(xs))
 
             # Recalculate Length (using simple Euclidean for now)
-            # Note: Ideally, you would reuse the NM_PXL constant from your config here
-            # for a truly accurate length recalculation.
+            # Note: We use the pixel coordinates directly.
             w = rx - lx
             h = by - uy
             length = np.sqrt(w ** 2 + h ** 2)
@@ -162,15 +163,29 @@ def run_editor(json_path):
 
 
 if __name__ == "__main__":
-    # Simple file dialog to start
-    import tkinter as tk
-    from tkinter import filedialog
+    # Create the Qt Application (Required for QFileDialog)
+    app = QApplication(sys.argv)
 
-    root = tk.Tk()
-    root.withdraw()
+    fpath = None
 
-    print("Please select the results.json file...")
-    fpath = filedialog.askopenfilename(filetypes=[("JSON files", "*.json")])
+    # 1. Check if file path provided via command line (from gui.py)
+    if len(sys.argv) > 1:
+        potential_path = sys.argv[1]
+        if os.path.exists(potential_path) and potential_path.endswith(".json"):
+            fpath = potential_path
 
+    # 2. If no valid argument, open File Dialog
+    if not fpath:
+        print("Please select the results.json file...")
+        fpath, _ = QFileDialog.getOpenFileName(
+            None,
+            "Select results.json",
+            "",
+            "JSON files (*.json)"
+        )
+
+    # 3. Launch Editor if we have a path
     if fpath:
         run_editor(fpath)
+    else:
+        print("No file selected. Exiting.")
