@@ -1,116 +1,154 @@
-import json
+import sys
 import os
+import json
 import threading
-import tkinter as tk
-from tkinter import filedialog, messagebox
+from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,
+                             QGridLayout, QFileDialog, QDoubleSpinBox, QMessageBox)
+from PyQt6.QtCore import QTimer, Qt
 
-from gemini import  ClusterDetector
+# Import the manager from your backend
+from gemini import ClusterDetector
 
 STATE_FILE = "directories.json"
 
-class Window:
-    def __init__(self, root):
-        self.root = root
+
+class DetectorWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle("Cluster Detector")
+        self.resize(500, 200)
         self.thread = None
-        self.det = ClusterDetector()
-        # Create main application window
-        root.title('Cluster detector')
 
-        last = load_last_dirs()
+        # Load previous paths
+        last_dirs = self.load_last_dirs()
+        self.source_dir = last_dirs.get("source", None)
+        self.output_dir = last_dirs.get("output", None)
 
-        # source directory
-        tk.Label(root, text='Source Directory:').grid(row=0, column=0, padx=5, pady=5, sticky='w')
-        self.source_label_var = tk.StringVar(value=last["source"])
-        source_label = tk.Label(root, textvariable=self.source_label_var, width=50, anchor='w')
-        source_label.grid(row=0, column=1, padx=5, pady=5)
-        tk.Button(root, text='Select', command=self.select_source_dir).grid(row=0, column=2, padx=5, pady=5)
+        # --- Layout Setup ---
+        layout = QGridLayout()
 
+        # 1. Source Directory UI
+        layout.addWidget(QLabel("Source Directory:"), 0, 0)
+        self.lbl_source = QLabel(self.source_dir if self.source_dir else "Not Selected")
+        self.lbl_source.setStyleSheet("color: gray; border: 1px solid #ccc; padding: 4px;")
+        layout.addWidget(self.lbl_source, 0, 1)
 
-        # output directory
-        tk.Label(root, text='Output Directory:').grid(row=1, column=0, padx=5, pady=5, sticky='w')
-        self.output_label_var = tk.StringVar(value=last["output"])
-        output_label = tk.Label(root, textvariable=self.output_label_var, width=50, anchor='w')
-        output_label.grid(row=1, column=1, padx=5, pady=5)
-        tk.Button(root, text='Select', command=self.select_output_dir).grid(row=1, column=2, padx=5, pady=5)
+        btn_source = QPushButton("Select")
+        btn_source.clicked.connect(self.select_source)
+        layout.addWidget(btn_source, 0, 2)
 
-        # Register validation command
-        vcmd = (root.register(self.validate_spinbox), '%P')
+        # 2. Output Directory UI
+        layout.addWidget(QLabel("Output Directory:"), 1, 0)
+        self.lbl_output = QLabel(self.output_dir if self.output_dir else "Not Selected")
+        self.lbl_output.setStyleSheet("color: gray; border: 1px solid #ccc; padding: 4px;")
+        layout.addWidget(self.lbl_output, 1, 1)
 
-        # Minimal cluster size label + spinbox
-        tk.Label(root, text="Minimal size:").grid(row=2, column=0, sticky='w', padx=5, pady=5)
-        self.min_var = tk.StringVar(value="1")
-        self.min_spinbox = tk.Spinbox(root, from_=0.2, to=50, increment=0.1, textvariable=self.min_var,
-                                      validate="key", validatecommand=vcmd)
-        self.min_spinbox.grid(row=2, column=1, sticky='w', padx=5, pady=5)
+        btn_output = QPushButton("Select")
+        btn_output.clicked.connect(self.select_output)
+        layout.addWidget(btn_output, 1, 2)
 
-        # Maximal cluster size label + spinbox
-        tk.Label(root, text="Maximal size:").grid(row=3, column=0, sticky='w', padx=5, pady=5)
-        self.max_var = tk.StringVar(value="10")
-        self.max_spinbox = tk.Spinbox(root, from_=0.2, to=50, increment=0.1, textvariable=self.max_var,
-                                      validate="key", validatecommand=vcmd)
-        self.max_spinbox.grid(row=3, column=1, sticky='w', padx=5, pady=5)
+        # 3. Min Size Spinbox (Double for floats)
+        layout.addWidget(QLabel("Minimal size (nm):"), 2, 0)
+        self.spin_min = QDoubleSpinBox()
+        self.spin_min.setRange(0.1, 50.0)
+        self.spin_min.setSingleStep(0.1)
+        self.spin_min.setValue(1.0)
+        layout.addWidget(self.spin_min, 2, 1)
 
-        self.process_button = tk.Button(root, text='Process', command=self.process_directories)
-        self.process_button.grid(row=2, column=2, rowspan=2, pady=10)
+        # 4. Max Size Spinbox
+        layout.addWidget(QLabel("Maximal size (nm):"), 3, 0)
+        self.spin_max = QDoubleSpinBox()
+        self.spin_max.setRange(0.1, 50.0)
+        self.spin_max.setSingleStep(0.1)
+        self.spin_max.setValue(10.0)
+        layout.addWidget(self.spin_max, 3, 1)
 
-        self.process_button = tk.Button(root, text='Edit', command=self.process_directories)
-        self.process_button.grid(row=4, column=1, rowspan=2, pady=10)
+        # 5. Process Button
+        self.btn_process = QPushButton("Process")
+        self.btn_process.clicked.connect(self.start_processing)
+        self.btn_process.setMinimumHeight(40)
+        layout.addWidget(self.btn_process, 4, 0, 1, 3)  # Span across all 3 columns
 
-        root.protocol("WM_DELETE_WINDOW", self.on_close)
-        root.mainloop()
+        self.setLayout(layout)
 
-    def process_directories(self):
-        source = self.source_label_var.get()
-        output = self.output_label_var.get()
+        # Timer to check thread status (replaces root.after)
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.check_thread)
 
-        if source == "None":
-            messagebox.showerror("No source", "Please select source directory")
+    def select_source(self):
+        d = QFileDialog.getExistingDirectory(self, "Select Source Directory", self.source_dir or "")
+        if d:
+            self.source_dir = d
+            self.lbl_source.setText(d)
+
+    def select_output(self):
+        d = QFileDialog.getExistingDirectory(self, "Select Output Directory", self.output_dir or "")
+        if d:
+            self.output_dir = d
+            self.lbl_output.setText(d)
+
+    def start_processing(self):
+        if not self.source_dir or self.source_dir == "Not Selected":
+            QMessageBox.warning(self, "Error", "Please select a source directory.")
             return
-        if output == "None":
-            messagebox.showerror("No output", "Please select output directory")
+        if not self.output_dir or self.output_dir == "Not Selected":
+            QMessageBox.warning(self, "Error", "Please select an output directory.")
             return
-        min_val = self.min_var.get()
-        max_val = self.max_var.get()
-        m = float(min_val)
-        M = float(max_val)
-        if m > M:
-            messagebox.showerror("Error", "Minimal size must be smaller than maximal size.")
+
+        m = self.spin_min.value()
+        M = self.spin_max.value()
+
+        if m >= M:
+            QMessageBox.warning(self, "Error", "Minimal size must be smaller than maximal size.")
             return
-        self.process_button.config(state="disabled")
-        self.thread = threading.Thread(target=self.det.process_sample, args=(source, output, m, M), daemon=True)
+
+        # UI updates
+        self.btn_process.setEnabled(False)
+        self.btn_process.setText("Processing... Please Wait")
+        self.save_last_dirs()
+
+        # Instantiate Manager
+        manager = ClusterDetector()
+
+        # Start Thread
+        # Note: daemon=False ensures processing finishes even if GUI closes abruptly,
+        # avoiding the 'interpreter shutdown' error.
+        self.thread = threading.Thread(
+            target=manager.process_sample,
+            args=(self.source_dir, self.output_dir, m, M),
+            daemon=False
+        )
         self.thread.start()
-        self.check_thread()
+
+        # Start checking the thread every 100ms
+        self.timer.start(100)
 
     def check_thread(self):
-        # print("checking")
-        if not self.thread.is_alive():
-            self.process_button.config(state="normal")
-            print("Finished")
-        else:
-            self.root.after(100, self.check_thread)
+        if self.thread and not self.thread.is_alive():
+            self.timer.stop()
+            self.btn_process.setEnabled(True)
+            self.btn_process.setText("Process")
+            QMessageBox.information(self, "Done", "Processing Finished Successfully!")
+            self.thread = None
+
+    def load_last_dirs(self):
+        if os.path.exists(STATE_FILE):
+            try:
+                with open(STATE_FILE, "r") as f:
+                    return json.load(f)
+            except:
+                pass
+        return {}
+
+    def save_last_dirs(self):
+        with open(STATE_FILE, "w") as f:
+            json.dump({"source": self.source_dir, "output": self.output_dir}, f)
 
 
-    def select_source_dir(self):
-        dirname = filedialog.askdirectory()
-        if dirname: self.source_label_var.set(dirname)
-
-    def select_output_dir(self):
-        dirname = filedialog.askdirectory()
-        if dirname: self.output_label_var.set(dirname)
-
-    def on_close(self):
-        save_last_dirs(self.source_label_var.get(), self.output_label_var.get())
-        self.root.destroy()
-
-    def validate_spinbox(self, new_val):
-        return new_val.isdigit() or new_val == ""
-
-def load_last_dirs():
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
-    return {"source": "None", "output": "None"}
-
-def save_last_dirs(source, output):
-    with open(STATE_FILE, "w") as f:
-        json.dump({"source": source, "output": output}, f)
+# --- Entry Point ---
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = DetectorWindow()
+    window.show()
+    sys.exit(app.exec())

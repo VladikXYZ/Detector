@@ -1,7 +1,9 @@
-import tkinter
-
-import gui
+import sys
+from PyQt6.QtWidgets import QApplication
+import gui  # Imports the new PyQt gui file
 
 if __name__ == "__main__":
-    root = tkinter.Tk()
-    window = gui.Window(root)
+    app = QApplication(sys.argv)
+    window = gui.DetectorWindow()
+    window.show()
+    sys.exit(app.exec())
