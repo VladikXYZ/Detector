@@ -146,7 +146,7 @@ class DetectorWindow(QWidget):
                 QMessageBox.critical(self, "Error", f"Could not launch editor:\n{e}")
 
     def check_thread(self):
-        print("check")
+        # print("check")
         if self.thread and not self.thread.is_alive():
             self.timer.stop()
             self.btn_process.setEnabled(True)
@@ -155,13 +155,10 @@ class DetectorWindow(QWidget):
             self.thread = None
 
     def load_last_dirs(self):
-        if os.path.exists(STATE_FILE):
-            try:
-                with open(STATE_FILE, "r") as f:
-                    return json.load(f)
-            except:
-                pass
-        return {}
+        try:
+            with open(STATE_FILE, "r") as f:
+                return json.load(f)
+        except: return {}
 
     def save_last_dirs(self):
         with open(STATE_FILE, "w") as f:
