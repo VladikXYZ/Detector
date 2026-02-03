@@ -1,141 +1,122 @@
 import sys
 import os
 import json
-import warnings
+
+import cv2
 import numpy as np
 import pandas as pd
 import tifffile
 import napari
-from napari.utils.notifications import show_info
-from magicgui import magicgui
-from PyQt6.QtWidgets import QApplication, QFileDialog
+from PyQt6.QtWidgets import QApplication
 
-# --- SILENCE WARNINGS ---
-# This ensures the console remains clean when we access the viewer internals
-# warnings.filterwarnings("ignore", category=FutureWarning, module="napari")
+from detector2 import ImageInfo
 
 
-# --- 1. DATA MANAGEMENT ---
-class ExperimentSession:
+# --- 1. DATA MANAGER (HANDLES CACHING & I/O) ---
+class DataManager:
     def __init__(self, json_path):
-        self.json_path = json_path
         self.root_dir = os.path.dirname(json_path)
         with open(json_path, "r") as f:
-            self.images_meta = json.load(f)
-        self.total_images = len(self.images_meta)
-        self.current_idx = 0
+            self.meta_list = [ImageInfo(**d) for d in json.load(f)]
+        self.idx = 0
+        self.total = len(self.meta_list)
+        files = [ii.file for ii in self.meta_list]
+        self.cache = []
+        for f in files:
+            img = cv2.imread(os.path.join(self.root_dir, f))
+            raw_dets = pd.read_csv(os.path.join(self.root_dir, f.split(".")[0] + ".csv")).to_numpy()
+            x = raw_dets[:, 0]
+            y = raw_dets[:, 1]
+            x2 = x + raw_dets[:, 2]
+            y2 = y + raw_dets[:, 3]
 
-    def get_current_meta(self):
-        return self.images_meta[self.current_idx]
+            # 2. Stack into Napari format: (N, 2, 2) -> [[y, x], [y2, x2]]
+            # Note: Napari uses (row, col) which corresponds to (y, x)
+            p1 = np.stack([y, x], axis=1)  # Top-Left
+            p2 = np.stack([y2, x2], axis=1)  # Bottom-Right
 
-    def load_current_data(self):
-        meta = self.get_current_meta()
-        img = tifffile.imread(os.path.join(self.root_dir, meta["filename"]))
-
-        csv_path = os.path.join(self.root_dir, meta["detections_csv_file"])
-        rects = []
-        if os.path.exists(csv_path):
-            df = pd.read_csv(csv_path)
-            if not df.empty:
-                for _, r in df.iterrows():
-                    rects.append([[r["UY"], r["LX"]], [r["BY"], r["RX"]]])
-
-        # Always return valid numpy array, even if empty
-        if not rects:
-            return img, np.empty((0, 2, 2)), meta["scale"]
-
-        return img, np.array(rects), meta["scale"]
-
-    def save_current_detections(self, rects):
-        csv_path = os.path.join(self.root_dir, self.get_current_meta()["detections_csv_file"])
-        data = []
-        for r in rects:
-            ys, xs = r[:, 0], r[:, 1]
-            uy, by, lx, rx = int(np.min(ys)), int(np.max(ys)), int(np.min(xs)), int(np.max(xs))
-            length = np.sqrt((rx - lx) ** 2 + (by - uy) ** 2)
-            data.append([lx, uy, rx, by, length])
-
-        pd.DataFrame(data, columns=["LX", "UY", "RX", "BY", "Length"]).to_csv(csv_path, index=False)
-        print(f"Saved to {csv_path}")
+            dets = np.stack([p1, p2], axis=1)
+            # print(dets.shape)
+            self.cache.append((f, img, dets))
 
 
-# --- 2. GUI LAYER ---
+    @property
+    def current_img(self):
+        return self.cache[self.idx]
+
+    def next(self):
+        if self.idx < self.total - 1:
+            self.idx += 1
+            return True
+        return False
+
+    def prev(self):
+        if self.idx > 0:
+            self.idx -= 1
+            return True
+        return False
+
+
+# --- 2. MAIN VIEWER LOGIC ---
 def run_editor(json_path):
-    session = ExperimentSession(json_path)
-    viewer = napari.Viewer(title="Cluster Editor")
+    session = DataManager(json_path)
+    viewer = napari.Viewer(title="Detection Editor")
 
     def refresh_view():
-        img, rects, _ = session.load_current_data()
-        meta = session.get_current_meta()
+        """Updates the viewer with data from the session."""
+        f, img, dets = session.current_img
 
-        # Update Window Title
-        viewer.title = f"Editor - {session.current_idx + 1}/{session.total_images}: {meta['filename']}"
-
-        # 1. Update Image (Preserve Layer to keep settings)
+        # Update Image Layer
         if 'Image' in viewer.layers:
             viewer.layers['Image'].data = img
         else:
             viewer.add_image(img, name='Image')
 
-        # 2. Update Detections (Preserve Layer to keep styles like edge width/color)
+        # Update Shapes Layer
         if 'Detections' in viewer.layers:
-            viewer.layers['Detections'].data = rects
+            viewer.layers['Detections'].data = dets
         else:
-            shapes = viewer.add_shapes(
-                rects,
+            viewer.add_shapes(
+                dets,
                 shape_type='rectangle',
-                edge_color='cyan',
+                edge_color='red',
                 face_color='transparent',
                 edge_width=2,
                 name='Detections'
             )
-            shapes.mode = 'select'
 
-        # --- FIX FOR UNDO (CTRL+Z) ---
-        # 1. Ensure the Detections layer is selected
-        viewer.layers.selection.active = viewer.layers['Detections']
+        # Set selection mode for easy editing
+        viewer.layers['Detections'].mode = 'select'
+        viewer.status = f"Image {session.idx + 1}/{session.total}: {f}"
 
-        # 2. IMPORTANT: Force focus back to the canvas.
-        # This prevents the "Next" button from stealing the keyboard shortcuts.
-        try:
-            viewer.window.qt_viewer.canvas.setFocus()
-        except Exception:
-            pass
 
-        show_info(f"Loaded {meta['filename']}")
-
-    def save():
-        if 'Detections' in viewer.layers:
-            session.save_current_detections(viewer.layers['Detections'].data)
-
-    # --- NAVIGATION ---
-
+    # --- KEYBINDINGS ---
     @viewer.bind_key('Right')
-    def next_img(v):
-        save()
-        if session.current_idx < session.total_images - 1:
-            session.current_idx += 1
+    def next_image(v):
+        if session.next():
             refresh_view()
         else:
-            show_info("End of Experiment")
+            viewer.status = "End of experiment."
 
     @viewer.bind_key('Left')
-    def prev_img(v):
-        save()
-        if session.current_idx > 0:
-            session.current_idx -= 1
+    def prev_image(v):
+        if session.prev():
             refresh_view()
         else:
-            show_info("Start of Experiment")
+            viewer.status = "Start of experiment."
 
+    # --- START ---
     refresh_view()
     napari.run()
 
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    fpath = sys.argv[1] if len(sys.argv) > 1 else None
-    if not fpath:
-        fpath, _ = QFileDialog.getOpenFileName(None, "Select results.json", "", "JSON (*.json)")
-    if fpath:
-        run_editor(fpath)
+    # Usage: python edit.py path/to/experiment.json
+    app = QApplication(sys.argv)  # Fix for some OS requiring Qt App
+
+    path = sys.argv[1] if len(sys.argv) > 1 else "experiment.json"
+
+    if os.path.exists(path):
+        run_editor(path)
+    else:
+        print(f"Error: Could not find {path}")

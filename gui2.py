@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,
 from PyQt6.QtCore import QTimer, Qt
 
 # Import the manager from your backend
-from gemini import ClusterDetector
+from detector2 import ClusterDetector, ResultOrganizer, JSON_FILE
 
 STATE_FILE = "directories.json"
 
@@ -20,11 +20,13 @@ class DetectorWindow(QWidget):
         self.setWindowTitle("Cluster Detector")
         self.resize(550, 200)  # Slightly wider to fit buttons
         self.thread = None
+        self.detector = ClusterDetector()
 
         # Load previous paths
         last_dirs = self.load_last_dirs()
         self.source_dir = last_dirs.get("source", None)
         self.output_dir = last_dirs.get("output", None)
+        self.edit_path = last_dirs.get("edit", None)
 
         # --- Layout Setup ---
         layout = QGridLayout()
@@ -59,7 +61,7 @@ class DetectorWindow(QWidget):
         layout.addWidget(self.spin_min, 2, 1)
 
         self.btn_process = QPushButton("Process")
-        self.btn_process.clicked.connect(self.start_processing)
+        self.btn_process.clicked.connect(self.validity_check)
         layout.addWidget(self.btn_process, 2, 2)
 
         # 4. Max Size Row + EDIT Button
@@ -93,7 +95,7 @@ class DetectorWindow(QWidget):
             self.output_dir = d
             self.lbl_output.setText(d)
 
-    def start_processing(self):
+    def validity_check(self):
         if not self.source_dir or self.source_dir == "Not Selected":
             QMessageBox.warning(self, "Error", "Please select a source directory.")
             return
@@ -112,41 +114,37 @@ class DetectorWindow(QWidget):
         self.btn_process.setEnabled(False)
         self.btn_process.setText("Running...")
         self.save_last_dirs()
-
-        # Instantiate Manager
-        manager = ClusterDetector()
-
-        # Start Thread
-        self.thread = threading.Thread(
-            target=manager.process_sample,
-            args=(self.source_dir, self.output_dir, m, M),
-            daemon=False
-        )
+        res_dir = self.output_dir + "/" + self.source_dir.split("/")[-1] + "/"
+        os.makedirs(res_dir, exist_ok=True)
+        self.edit_path = res_dir+JSON_FILE
+        self.thread = threading.Thread(target=self.start_processing, args=(self.source_dir, res_dir, m, M))
         self.thread.start()
-
-        # Start checking the thread every 100ms
         self.timer.start(100)
 
-    def start_editor(self):
-        # 1. Ask user for the results.json file
-        start_dir = self.output_dir if self.output_dir else ""
-        fpath, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select results.json to Edit",
-            start_dir,
-            "JSON files (*.json)"
-        )
 
-        if fpath:
-            # 2. Launch the editor as a separate process
-            # This keeps the detector GUI responsive while editing
-            try:
-                subprocess.Popen([sys.executable, "edit.py", fpath])
+    def start_processing(self, src, res_dir, m, M):
+        print(res_dir)
+        ResultOrganizer.organize(src+"/", res_dir)
+        self.detector.process_sample(res_dir, m, M)
+
+
+    def start_editor(self):
+        if not self.edit_path:
+            start_dir = self.output_dir if self.output_dir else ""
+            self.edit_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select results.json to Edit",
+                start_dir,
+                "JSON files (*.json)"
+            )
+
+        if self.edit_path:
+            self.save_last_dirs()
+            try: subprocess.Popen([sys.executable, "edit.py", self.edit_path])
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Could not launch editor:\n{e}")
 
     def check_thread(self):
-        # print("check")
         if self.thread and not self.thread.is_alive():
             self.timer.stop()
             self.btn_process.setEnabled(True)
@@ -162,7 +160,7 @@ class DetectorWindow(QWidget):
 
     def save_last_dirs(self):
         with open(STATE_FILE, "w") as f:
-            json.dump({"source": self.source_dir, "output": self.output_dir}, f)
+            json.dump({"source": self.source_dir, "output": self.output_dir, "edit": self.edit_path}, f)
 
 
 # --- Entry Point ---

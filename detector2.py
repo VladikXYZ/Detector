@@ -5,13 +5,14 @@ from dataclasses import dataclass, asdict
 
 import cv2
 import numpy as np
+import pandas as pd
 import tifffile
 import xml.etree.ElementTree as XML_parser
 
-from debugpy.launcher.debuggee import process
-
 OFFSET = 55
 U8_MAX = 255
+GAMMA = 0.5
+CLAHE_LIM = 2.5
 JSON_FILE = "metadata.json"
 
 
@@ -30,7 +31,6 @@ class ImageInfo:
 class ResultOrganizer:
     @classmethod
     def organize(cls, src, dest):
-        # print(dest)
         files = [x for x in os.listdir(src) if x.endswith(".tif")]
         scales = [cls._parse_scale(src+f) for f in files]
         pngs = [cls._convert_tif(src+f) for f in files]
@@ -66,54 +66,90 @@ class ResultOrganizer:
         result = cv2.imread(path, cv2.IMREAD_UNCHANGED)
         if result is None:
             raise Exception(f"Cannot found file: {path}")
+        mmin, mmax = np.percentile(result, (0.1, 99.9))
         result = result.astype(dtype=np.float32)
-        mmax = np.max(result)
-        mmin = np.min(result)
+        np.clip(result, mmin, mmax, out=result)
+
         return (((result - mmin) / max(1, (mmax - mmin))) * U8_MAX).astype(dtype=np.uint8)
 
 
 
-ro = ResultOrganizer()
-ro.organize("C:\\Users\\vsado\\Downloads\\Git\\Detector\\data\\6768\\","C:\\Users\\vsado\\Downloads\\Git\\Detector\\results\\6768\\")
+# ro = ResultOrganizer()
+# ro.organize("data/6768/","results/6768/")
 
 
 class ClusterDetector:
-    @classmethod
-    def process_sample(cls, res_dir, m, M):
+
+    def process_sample(self, res_dir, m, M):
+        self.m = m
+        self.M = M
         with open(res_dir+JSON_FILE, "r") as f:
             data_dicts = json.load(f)
         img_infos = [ImageInfo(**d) for d in data_dicts]
         files = [res_dir+ii.file for ii in img_infos]
         scales = [ii.scale for ii in img_infos]
 
-        # process_list = zip(files, scales)
-        for f in files:
-            x = cls._preprocess(f)
-            cv2.imwrite(f+"_d.png", x)
+        with ProcessPoolExecutor() as executor:
+            # Step 1: Preprocessing
+            prep = list(executor.map(self._preprocess, files))
+            for i, p in enumerate(prep):
+                cv2.imwrite(res_dir+f"{i+1:02}"+"_prep.png", p)
+            proc = list(executor.map(self._process, prep, scales))
+            # for i,p in enumerate(proc):
+            #     print(p.shape)
+                # OUTPUT_FORMAT = ["X", "Y", "W", "H"]
+                # df = pd.DataFrame(p, columns=OUTPUT_FORMAT)
+                # df.to_csv(res_dir + f"{i + 1:02}_dets.csv", index=False)
+            post = list(executor.map(self._postprocess, prep, proc, scales))
+        for i,p in enumerate(post):
+            print(p.shape)
+            OUTPUT_FORMAT = ["X", "Y", "W", "H"]
+            df = pd.DataFrame(p, columns=OUTPUT_FORMAT)
+            df.to_csv(res_dir + f"{i + 1:02}.csv", index=False)
 
-        # with ProcessPoolExecutor() as executor:
-        #     # Step 1: Preprocessing
-        #     prep = list(executor.map(cls._preprocess, process_list))
-        #
-        #     # Step 2: MSER Detection
-        #     mser_args = ((img, scale, m, M) for (img, scale, _) in prep)
-        #     results = list(executor.map(self._mser_process, mser_args))
-        #
-        #     # Step 3: Postprocessing
-        #     # We generate unique CSV names based on index to avoid collision
-        #     post_args = (
-        #         (p[0], p[1], r, p[2], f"{out_dir}{idx}")
-        #         for idx, (p, r) in enumerate(zip(prep, results))
-        #     )
-        #     lengths = list(executor.map(self.postprocess, post_args))
     @staticmethod
     def _preprocess(f):
         img = cv2.imread(f, cv2.IMREAD_UNCHANGED)
-        # denoised = cv2.GaussianBlur(img, (3,3), 0)
-        denoised = cv2.bilateralFilter(img, 2, 25, 50)
-        print(img.shape)
-        return denoised
+        denoised = cv2.bilateralFilter(img, 2, 25, 30)
+        clahe_obj = cv2.createCLAHE(clipLimit=CLAHE_LIM)
+        clahed =  clahe_obj.apply(denoised.astype(dtype=np.uint8))
+        inverted = U8_MAX - clahed
+        th, mask = cv2.threshold(inverted, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        result = mask * inverted
+        return result
+
+    def _process(self, img, scale):
+        ma = max(1, int((self.m*scale / 2) ** 2 * np.pi))
+        MA = max(1, int((self.M*scale / 2) ** 2 * np.pi))
+        mser = cv2.MSER_create(min_area=ma, max_area=MA, delta=1, max_variation=10)
+        _, bboxes = mser.detectRegions(img)
+
+        if len(bboxes) == 0:
+            y, x = np.unravel_index(np.argmin(img), img.shape)
+            return np.asarray([[x, y, 1, 1]])
+        return bboxes
+
+    def _postprocess(self, img, detections, scale):
+        valids = (detections[:, 0] >= 10) & (detections[:, 1] >= 10)
+        detections= detections[valids]
+        values, indices = np.unique(detections, return_index=True, axis=0)
+        detections = detections[indices]
+        # return detections
+        binarized = np.zeros(img.shape, dtype=np.uint8)
+        for rect in detections:
+            lx, uy, w, h = rect
+            patch = img[uy:uy+h, lx:lx+w]
+            binarized[uy:uy+h, lx:lx+w] = np.where(patch >= 1, 255, 0)
+
+        num_labels, labels, bboxes, centroids = cv2.connectedComponentsWithStats(binarized, connectivity=8)
+        dets = bboxes[1:, :4]
+        areas = bboxes[1:, 4]
+        ma = max(1, int((self.m*scale / 2) ** 2 * np.pi))
+        MA = max(1, int((self.M*scale / 2) ** 2 * np.pi))
+        condition = (areas >= ma) & (areas <= MA)
+        return dets[condition]
 
 
-cd = ClusterDetector()
-cd.process_sample("C:\\Users\\vsado\\Downloads\\Git\\Detector\\results\\6768\\", 1, 2)
+
+# cd = ClusterDetector()
+# cd.process_sample("results/6768/", 1, 10)
