@@ -73,11 +73,6 @@ class ResultOrganizer:
         return (((result - mmin) / max(1, (mmax - mmin))) * U8_MAX).astype(dtype=np.uint8)
 
 
-
-# ro = ResultOrganizer()
-# ro.organize("data/6768/","results/6768/")
-
-
 class ClusterDetector:
 
     def process_sample(self, res_dir, m, M):
@@ -102,7 +97,7 @@ class ClusterDetector:
                 # df.to_csv(res_dir + f"{i + 1:02}_dets.csv", index=False)
             post = list(executor.map(self._postprocess, prep, proc, scales))
         for i,p in enumerate(post):
-            print(p.shape)
+            # print(p.shape)
             OUTPUT_FORMAT = ["X", "Y", "W", "H"]
             df = pd.DataFrame(p, columns=OUTPUT_FORMAT)
             df.to_csv(res_dir + f"{i + 1:02}.csv", index=False)
@@ -113,7 +108,7 @@ class ClusterDetector:
         denoised = cv2.bilateralFilter(img, 2, 25, 30)
         clahe_obj = cv2.createCLAHE(clipLimit=CLAHE_LIM)
         clahed =  clahe_obj.apply(denoised.astype(dtype=np.uint8))
-        inverted = U8_MAX - clahed
+        inverted = U8_MAX - denoised
         th, mask = cv2.threshold(inverted, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         result = mask * inverted
         return result
@@ -149,7 +144,3 @@ class ClusterDetector:
         condition = (areas >= ma) & (areas <= MA)
         return dets[condition]
 
-
-
-# cd = ClusterDetector()
-# cd.process_sample("results/6768/", 1, 10)

@@ -85,8 +85,6 @@ def run_editor(json_path):
                 name='Detections'
             )
 
-        # Set selection mode for easy editing
-        viewer.layers['Detections'].mode = 'select'
         viewer.status = f"Image {session.idx + 1}/{session.total}: {f}"
 
 
