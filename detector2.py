@@ -116,7 +116,7 @@ class ClusterDetector:
     def _process(self, img, scale):
         ma = max(1, int((self.m*scale / 2) ** 2 * np.pi))
         MA = max(1, int((self.M*scale / 2) ** 2 * np.pi))
-        mser = cv2.MSER_create(min_area=ma, max_area=MA, delta=30, max_variation=10)
+        mser = cv2.MSER_create(min_area=ma, max_area=MA, delta=1, max_variation=2)
         _, bboxes = mser.detectRegions(img)
 
         if len(bboxes) == 0:
@@ -131,10 +131,12 @@ class ClusterDetector:
         detections = detections[indices]
         # return detections
         binarized = np.zeros(img.shape, dtype=np.uint8)
-        for rect in detections:
+        valids = np.zeros(detections.shape[0], dtype=np.bool)
+        for i, rect in enumerate(detections):
             lx, uy, w, h = rect
             patch = img[uy:uy+h, lx:lx+w]
-            if np.max(patch) >= 250:
+            if np.mean(patch) >= 220:
+                valids[i] = True
                 binarized[uy:uy+h, lx:lx+w] = np.where(patch >= 1, 255, 0)
 
         num_labels, labels, bboxes, centroids = cv2.connectedComponentsWithStats(binarized, connectivity=8)
@@ -143,5 +145,5 @@ class ClusterDetector:
         ma = max(1, int((self.m*scale / 2) ** 2 * np.pi))
         MA = max(1, int((self.M*scale / 2) ** 2 * np.pi))
         condition = (areas >= ma) & (areas <= MA)
-        return dets[condition]
+        return detections[valids]
 
