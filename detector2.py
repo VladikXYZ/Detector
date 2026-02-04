@@ -143,17 +143,18 @@ class ClusterDetector:
     def _preprocess(f):
         img = cv2.imread(f, cv2.IMREAD_UNCHANGED)
         denoised = cv2.bilateralFilter(img, 2, 25, 30)
-        clahe_obj = cv2.createCLAHE(clipLimit=CLAHE_LIM)
-        clahed =  clahe_obj.apply(denoised.astype(dtype=np.uint8))
+        # clahe_obj = cv2.createCLAHE(clipLimit=CLAHE_LIM)
+        # clahed =  clahe_obj.apply(denoised.astype(dtype=np.uint8))
         inverted = U8_MAX - denoised
-        th, mask = cv2.threshold(inverted, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # th, mask = cv2.threshold(inverted, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        mask = np.where(inverted >= 160, 1, 0)
         result = mask * inverted
-        return result
+        return result.astype(dtype=np.uint8)
 
     def _process(self, img, scale):
         ma = max(1, int((self.m*scale / 2) ** 2 * np.pi))
         MA = max(1, int((self.M*scale / 2) ** 2 * np.pi))
-        mser = cv2.MSER_create(min_area=ma, max_area=MA, delta=1, max_variation=1.5)
+        mser = cv2.MSER_create(min_area=ma, max_area=MA, delta=1, max_variation=10)
         locs, bboxes = mser.detectRegions(img)
 
         if len(bboxes) == 0:
@@ -166,35 +167,63 @@ class ClusterDetector:
         detections, locs = processed
         rxs = detections[:, 0] + detections[:, 2]
         bys = detections[:, 1] + detections[:, 3]
-        valids = (rxs <= rx) & (bys <= by) & (detections[:, 0] >= lx) & (detections[:, 1] >= uy)
+        ws, hs = detections[:, 2], detections[:, 3]
+        ratios = np.maximum(ws / hs, hs / ws)
+        valids = (rxs <= rx) & (bys <= by) & (detections[:, 0] >= lx) & (detections[:, 1] >= uy) & (ratios <= 2)
 
         detections= detections[valids]
         locs = locs[valids]
         values, indices = np.unique(detections, return_index=True, axis=0)
         detections = detections[indices]
         locs = locs[indices]
+
+        areas = detections[:, 2] * detections[:, 3]
+        sort_indices = np.argsort(areas)
+        detections = detections[sort_indices]
+        locs = locs[sort_indices]
         valids = np.zeros(detections.shape[0], dtype=np.bool)
+        g_cache = {}
+        hit = 0
         for i, rect in enumerate(detections):
             lx, uy, w, h = rect
-            if (max(w/h, h/w) <= 1.5):
-                patch = img[uy:uy+h, lx:lx+w]
-                # valids[i] = True
-                valids[i] = shape_filter(patch)
-            else: valids[i] = False
-        detections = detections[valids]
+            # valids[i] = True
+            # continue
+            patch = img[uy:uy + h, lx:lx + w]
+            if (w, h) in g_cache:
+                g_vec, g_norm = g_cache[(w, h)]
+                hit +=1
+            else:
+                cx, cy = w // 2, h // 2
+                sx, sy = w / 3.0, h / 3.0
+                mx, my = np.meshgrid(np.arange(w) - cx, np.arange(h) - cy)
+                gaussian = np.exp(-(mx ** 2 / (2 * sx ** 2) + my ** 2 / (2 * sy ** 2)))
+                mean_gauss = gaussian - np.mean(gaussian)
+                g_vec = mean_gauss.flatten()
+                g_norm = np.linalg.norm(g_vec)
+                g_cache[(w, h)] = (g_vec, g_norm)
+
+                g_vec = mean_gauss.T.flatten()
+                g_cache[(h, w)] = (g_vec, g_norm)
+
+            p_vec = patch.flatten().astype(np.float32)
+            p_vec = p_vec - np.mean(p_vec)
+            p_norm = np.linalg.norm(p_vec)
+            score = np.dot(p_vec, g_vec) / (p_norm * g_norm)
+
+            # 5. Filter
+            valids[i] = score >= 0.6
+
+        print(f"Hit rate: {(hit/len(detections))*100:.3f}%")
+        # detections = detections[valids]
         locs = locs[valids]
         binarized = np.zeros(img.shape, dtype=np.uint8)
         for loc in locs:
             xs = loc[:, 0]
             ys = loc[:, 1]
-
-            # Set those pixels to white
             binarized[ys, xs] = 255
-            # break
 
         # print(binarized)
-        cv2.imwrite(f"binarized{idx}.png", binarized)
-        # return binarized, locs
+        # cv2.imwrite(f"binarized{idx}.png", binarized)
         num_labels, labels, bboxes, centroids = cv2.connectedComponentsWithStats(binarized, connectivity=8)
         detections = bboxes[1:, :4]
         areas = bboxes[1:, 4]
