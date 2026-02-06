@@ -116,7 +116,7 @@ if __name__ == "__main__":
     # Usage: python edit.py path/to/experiment.json
     app = QApplication(sys.argv)  # Fix for some OS requiring Qt App
 
-    path = sys.argv[1] if len(sys.argv) > 1 else "experiment.json"
+    path = sys.argv[1]
 
     if os.path.exists(path):
         run_editor(path)
