@@ -14,8 +14,9 @@ from detector2 import ImageInfo
 
 # --- 1. DATA MANAGER (HANDLES CACHING & I/O) ---
 class DataManager:
-    def __init__(self, json_path):
+    def __init__(self, json_path, viewer):
         self.root_dir = os.path.dirname(json_path)
+        self.viewer = viewer
         with open(json_path, "r") as f:
             self.meta_list = [ImageInfo(**d) for d in json.load(f)]
         self.idx = 0
@@ -37,7 +38,7 @@ class DataManager:
 
             dets = np.stack([p1, p2], axis=1)
             # print(dets.shape)
-            self.cache.append((f, img, dets))
+            self.cache.append([f, img, dets])
 
 
     @property
@@ -46,12 +47,14 @@ class DataManager:
 
     def next(self):
         if self.idx < self.total - 1:
+            self.cache[self.idx][2] = self.viewer.layers["Detections"].data
             self.idx += 1
             return True
         return False
 
     def prev(self):
         if self.idx > 0:
+            self.cache[self.idx][2] = self.viewer.layers["Detections"].data
             self.idx -= 1
             return True
         return False
@@ -59,8 +62,9 @@ class DataManager:
 
 # --- 2. MAIN VIEWER LOGIC ---
 def run_editor(json_path):
-    session = DataManager(json_path)
     viewer = napari.Viewer(title="Detection Editor")
+    session = DataManager(json_path, viewer)
+
 
     def refresh_view():
         """Updates the viewer with data from the session."""
