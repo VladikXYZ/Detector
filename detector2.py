@@ -100,8 +100,8 @@ class ClusterDetector:
             print(f"Preprocessing done: {t_prep:.2f} seconds")
 
             # Save debug images (Optional to time this, but usually fast)
-            for i, p in enumerate(prep):
-                cv2.imwrite(res_dir + f"{i + 1:02}" + "_prep.png", p)
+            # for i, p in enumerate(prep):
+            #     cv2.imwrite(res_dir + f"{i + 1:02}" + "_prep.png", p)
 
             # --- Processing (MSER) ---
             print("Starting Processing...")
@@ -122,7 +122,7 @@ class ClusterDetector:
         print("Saving CSVs...")
         t0 = time.time()
         for i, p in enumerate(post):
-            OUTPUT_FORMAT = ["x", "y", "w", "h"]  # Use lowercase to match standard
+            OUTPUT_FORMAT = ["x", "y", "w", "h", "lengths"]  # Use lowercase to match standard
             df = pd.DataFrame(p, columns=OUTPUT_FORMAT)
             df.to_csv(res_dir + f"{i + 1:02}.csv", index=False)
         t_save = time.time() - t0
@@ -213,7 +213,7 @@ class ClusterDetector:
             # 5. Filter
             valids[i] = score >= 0.6
 
-        print(f"Hit rate: {(hit/len(detections))*100:.3f}%")
+        # print(f"Hit rate: {(hit/len(detections))*100:.3f}%")
         # detections = detections[valids]
         locs = locs[valids]
         binarized = np.zeros(img.shape, dtype=np.uint8)
@@ -231,7 +231,11 @@ class ClusterDetector:
         MA = max(1, int((self.M*scale / 2) ** 2 * np.pi))
         condition = (areas >= ma) & (areas <= MA)
         detections = detections[condition]
-        return detections
+
+        hs = detections[:, 3]
+        ws = detections[:, 2]
+        lengths = np.sqrt(hs*hs+ws*ws)/scale
+        return np.column_stack((detections, lengths))
 
 def shape_filter(patch, threshold = 0.6):
     ph, pw = patch.shape
