@@ -51,7 +51,6 @@ class ResultOrganizer:
                 nm = float(cut.find('.//MicronbarValue').text)
                 if unit == 'Micrometer': nm *= 1000
                 nm_pxl = (w - x - OFFSET) / nm
-                # scale = NM_PXL / nm_pxl
                 return nm_pxl
         raise Exception(f"{path} is not a .tif file")
 

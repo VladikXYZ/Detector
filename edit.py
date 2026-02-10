@@ -19,23 +19,20 @@ class DataManager:
             self.meta_list = json.load(f)
         self.idx = 0
         self.total = len(self.meta_list)
-        files = [i["file"] for i in self.meta_list]
+        # files = [i["file"] for i in self.meta_list]
         self.cache = []
-        for f in files:
-            img = cv2.imread(os.path.join(self.root_dir, f))
-            raw_dets = pd.read_csv(os.path.join(self.root_dir, f.split(".")[0] + ".csv")).to_numpy()
+        for d in self.meta_list:
+            print(d)
+            img = cv2.imread(os.path.join(self.root_dir, d["file"]))
+            raw_dets = pd.read_csv(os.path.join(self.root_dir, d["raw"])).to_numpy()
             x = raw_dets[:, 0]
             y = raw_dets[:, 1]
             x2 = x + raw_dets[:, 2]
             y2 = y + raw_dets[:, 3]
-
-            # 2. Stack into Napari format: (N, 2, 2) -> [[y, x], [y2, x2]]
-            # Note: Napari uses (row, col) which corresponds to (y, x)
             p1 = np.stack([y, x], axis=1)  # Top-Left
             p2 = np.stack([y2, x2], axis=1)  # Bottom-Right
 
             dets = np.stack([p1, p2], axis=1)
-            # print(dets.shape)
             self.cache.append([f, img, dets])
 
 
@@ -133,12 +130,12 @@ def run_editor(json_path):
 
             if reply == QMessageBox.Yes:
                 print("Saving...")
-                for f, _, det in session.cache:
-                    det=np.asarray(det).flatten().reshape(-1, 4)
+                for c,i in zip(session.cache, session.meta_list):
+                    det=np.asarray(c[2]).flatten().reshape(-1, 4)
                     det[:, 2] -= det[:, 0]
                     det[:, 3] -= det[:, 1]
                     df = pd.DataFrame(det, columns=['x', 'y', 'w', 'h'])
-                    df.to_csv(session.root_dir+f.split(".")[0] + "e.csv", index=False)
+                    df.to_csv(os.path.join(session.root_dir,i["edit"]), index=False)
                 print("Saved!")
 
 
