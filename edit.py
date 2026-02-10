@@ -66,6 +66,7 @@ def run_editor(json_path):
     session = DataManager(json_path, viewer)
 
 
+
     def refresh_view():
         """Updates the viewer with data from the session."""
         f, img, dets = session.current_img
@@ -106,6 +107,47 @@ def run_editor(json_path):
             refresh_view()
         else:
             viewer.status = "Start of experiment."
+
+    from napari.utils.notifications import show_info
+    from qtpy.QtWidgets import QMessageBox
+
+    def setup_close_handler(viewer, session):
+        # 1. Get the Qt Main Window
+        main_window = viewer.window._qt_window
+
+        # 2. Store the ORIGINAL close event so we don't break Napari internals
+        original_close_event = main_window.closeEvent
+
+        # 3. Define our Custom Interceptor
+        def custom_close_event(event):
+            # Prompt User
+            msg = QMessageBox(main_window)
+            msg.setWindowTitle("Save Changes?")
+            msg.setText("Do you want to save changes to disk before quitting?")
+            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+            msg.setDefaultButton(QMessageBox.Yes)
+
+            reply = msg.exec_()
+
+            if reply == QMessageBox.Cancel:
+                event.ignore()  # STOP CLOSING
+                return
+
+            if reply == QMessageBox.Yes:
+                print("Saving...")
+                for f, _, det in session.cache:
+                    det=det.flatten().reshape(-1, 4)
+                    det[:, 2] -= det[:, 0]
+                    det[:, 3] -= det[:, 1]
+                    df = pd.DataFrame(det, columns=['x', 'y', 'w', 'h'])
+                    df.to_csv(session.root_dir+f.split(".")[0] + "e.csv", index=False)
+                print("Saved!")
+
+
+        # 4. Monkey Patch
+        main_window.closeEvent = custom_close_event
+
+    setup_close_handler(viewer, session)
 
     # --- START ---
     refresh_view()
