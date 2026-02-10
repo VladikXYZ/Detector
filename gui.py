@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,
 from PyQt6.QtCore import QTimer, Qt
 
 # Import the manager from your backend
-from detector2 import ClusterDetector, ResultOrganizer, JSON_FILE
+from detector import ClusterDetector, ResultOrganizer, JSON_FILE
 
 STATE_FILE = "directories.json"
 
@@ -77,6 +77,10 @@ class DetectorWindow(QWidget):
         self.btn_edit.clicked.connect(self.start_editor)
         layout.addWidget(self.btn_edit, 3, 2)
 
+        self.editor_process = None
+        self.editor_timer = QTimer()
+        self.editor_timer.timeout.connect(self.check_editor_status)
+
         self.setLayout(layout)
 
         # Timer to check thread status
@@ -129,6 +133,7 @@ class DetectorWindow(QWidget):
 
 
     def start_editor(self):
+        # 1. Select File if not already selected
         if not self.edit_path:
             start_dir = self.output_dir if self.output_dir else ""
             self.edit_path, _ = QFileDialog.getOpenFileName(
@@ -138,10 +143,25 @@ class DetectorWindow(QWidget):
                 "JSON files (*.json)"
             )
 
+        # 2. Launch Logic
         if self.edit_path:
             self.save_last_dirs()
-            try: subprocess.Popen([sys.executable, "edit.py", self.edit_path])
+            try:
+                # print("editing")
+                # UI Update: Disable button
+                self.btn_edit.setEnabled(False)
+                self.btn_edit.setText("Editing...")
+
+                # Start the external process
+                self.editor_process = subprocess.Popen([sys.executable, "edit.py", self.edit_path])
+
+                # Start checking if it's alive every 500ms
+                self.editor_timer.start(500)
+
             except Exception as e:
+                # Reset if it crashes immediately
+                self.btn_edit.setEnabled(True)
+                self.btn_edit.setText("Edit Results")
                 QMessageBox.critical(self, "Error", f"Could not launch editor:\n{e}")
 
     def check_thread(self):
@@ -161,6 +181,17 @@ class DetectorWindow(QWidget):
     def save_last_dirs(self):
         with open(STATE_FILE, "w") as f:
             json.dump({"source": self.source_dir, "output": self.output_dir, "edit": self.edit_path}, f)
+
+    def check_editor_status(self):
+        # .poll() returns None if process is running, or an exit code if finished
+        if self.editor_process and self.editor_process.poll() is not None:
+            self.editor_timer.stop()
+            self.editor_process = None
+
+            # Re-enable UI
+            self.btn_edit.setEnabled(True)
+            self.btn_edit.setText("Edit Results")
+            # Optional: print("Editor closed.")
 
 
 # --- Entry Point ---

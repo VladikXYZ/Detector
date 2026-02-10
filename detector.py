@@ -2,7 +2,6 @@ import json
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass, asdict
 
 import cv2
 import numpy as np
@@ -10,7 +9,6 @@ import pandas as pd
 import tifffile
 import xml.etree.ElementTree as XML_parser
 
-from tifffile.tifffile import peek_iterator
 
 OFFSET = 55
 U8_MAX = 255
@@ -107,6 +105,7 @@ class ClusterDetector:
             # --- Postprocessing (Filtering/Cleaning) ---
             print("Starting Postprocessing...")
             t0 = time.time()
+
             # Note: Ensure _postprocess accepts (prep, proc, scales) arguments correctly
             post = list(executor.map(self._postprocess, prep, proc, scales, range(len(scales))))
             t_post = time.time() - t0
@@ -233,36 +232,3 @@ class ClusterDetector:
         ws = detections[:, 2]
         lengths = np.sqrt(hs*hs+ws*ws)/scale
         return np.column_stack((detections, lengths))
-
-def shape_filter(patch, threshold = 0.6):
-    ph, pw = patch.shape
-    # 2. Generate Gaussian Template (Thesis Logic)
-    # We calculate this fresh for every single box
-    cx, cy = pw // 2, ph // 2
-    sx, sy = pw / 3.0, ph / 3.0  # Sigma is 1/3 of the size
-
-    # Create the grid
-    mx, my = np.meshgrid(np.arange(pw) - cx, np.arange(ph) - cy)
-
-    # Calculate Gaussian formula
-    gaussian = np.exp(-(mx ** 2 / (2 * sx ** 2) + my ** 2 / (2 * sy ** 2)))
-
-    # 3. Prepare for Correlation (Zero-Center & Normalize)
-    # Flatten arrays to 1D vectors
-    p_vec = patch.flatten().astype(np.float32)
-    g_vec = gaussian.flatten()
-
-    # Subtract Mean (This removes "brightness" so we only check SHAPE)
-    p_vec = p_vec - np.mean(p_vec)
-    g_vec = g_vec - np.mean(g_vec)
-
-    # Calculate Vector Magnitude (Norm)
-    p_norm = np.linalg.norm(p_vec)
-    g_norm = np.linalg.norm(g_vec)
-
-    # 4. Calculate Correlation Score (Cosine Similarity)
-    # Formula: (A . B) / (|A| * |B|)
-    score = np.dot(p_vec, g_vec) / (p_norm * g_norm)
-
-    # 5. Filter
-    return score >= threshold
