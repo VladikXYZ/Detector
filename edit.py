@@ -9,8 +9,6 @@ import tifffile
 import napari
 from PyQt6.QtWidgets import QApplication
 
-from detector2 import ImageInfo
-
 
 # --- 1. DATA MANAGER (HANDLES CACHING & I/O) ---
 class DataManager:
@@ -18,10 +16,10 @@ class DataManager:
         self.root_dir = os.path.dirname(json_path)
         self.viewer = viewer
         with open(json_path, "r") as f:
-            self.meta_list = [ImageInfo(**d) for d in json.load(f)]
+            self.meta_list = json.load(f)
         self.idx = 0
         self.total = len(self.meta_list)
-        files = [ii.file for ii in self.meta_list]
+        files = [i["file"] for i in self.meta_list]
         self.cache = []
         for f in files:
             img = cv2.imread(os.path.join(self.root_dir, f))
@@ -136,7 +134,7 @@ def run_editor(json_path):
             if reply == QMessageBox.Yes:
                 print("Saving...")
                 for f, _, det in session.cache:
-                    det=det.flatten().reshape(-1, 4)
+                    det=np.asarray(det).flatten().reshape(-1, 4)
                     det[:, 2] -= det[:, 0]
                     det[:, 3] -= det[:, 1]
                     df = pd.DataFrame(det, columns=['x', 'y', 'w', 'h'])

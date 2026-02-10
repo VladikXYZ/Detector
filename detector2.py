@@ -10,38 +10,31 @@ import pandas as pd
 import tifffile
 import xml.etree.ElementTree as XML_parser
 
+from tifffile.tifffile import peek_iterator
+
 OFFSET = 55
 U8_MAX = 255
 GAMMA = 0.5
 CLAHE_LIM = 2.5
 JSON_FILE = "metadata.json"
 
-
-@dataclass
-class ImageInfo:
-    file: str
-    scale: float   # nm/pixel
-    org_file: str  # Original filename
-
-    # Helper to load from JSON
-    @staticmethod
-    def from_dict(d):
-        return ImageInfo(**d)
-
-
 class ResultOrganizer:
     @classmethod
     def organize(cls, src, dest):
-        files = [x for x in os.listdir(src) if x.endswith(".tif")]
-        scales = [cls._parse_scale(src+f) for f in files]
-        pngs = [cls._convert_tif(src+f) for f in files]
+        files = [f for f in os.listdir(src) if f.endswith(".tif")]
+        paths = [os.path.join(src, f) for f in files]
+        scales = [cls._parse_scale(p) for p in paths]
+        pngs = [cls._convert_tif(p) for p in paths]
         comp_params = [cv2.IMWRITE_PNG_COMPRESSION, 1]
 
         json_info = []
         for i, (scale, png, file) in enumerate(zip(scales, pngs, files)):
-            file_name = f"{i+1:02}.png"
-            new_info = ImageInfo(file_name, scale, file)
-            json_info.append(asdict(new_info))
+            file_name = f"{i+1:02}"
+            raw = file_name+"r.csv"
+            edit = file_name+"e.csv"
+            file_name += ".png"
+            new_info = {"file": file_name, "scale": scale,"org_file": file, "raw":raw, "edit":edit}
+            json_info.append(new_info)
             cv2.imwrite(dest+file_name, png, comp_params)
 
         json.dump(json_info, open(dest+JSON_FILE, "w"),indent=1)
@@ -85,9 +78,12 @@ class ClusterDetector:
 
         with open(res_dir + JSON_FILE, "r") as f:
             data_dicts = json.load(f)
-        img_infos = [ImageInfo(**d) for d in data_dicts]
-        files = [res_dir + ii.file for ii in img_infos]
-        scales = [ii.scale for ii in img_infos]
+        # print(data_dicts)
+        for d in data_dicts:
+            print(d)
+        # img_infos = [ImageInfo(**d) for d in data_dicts]
+        files = [res_dir + d["file"] for d in data_dicts]
+        scales = [d["scale"] for d in data_dicts]
 
         cv2.setNumThreads(1)  # Good practice for multiprocessing
 
@@ -121,10 +117,12 @@ class ClusterDetector:
         # --- Saving Results ---
         print("Saving CSVs...")
         t0 = time.time()
-        for i, p in enumerate(post):
-            OUTPUT_FORMAT = ["x", "y", "w", "h", "lengths"]  # Use lowercase to match standard
+        OUTPUT_FORMAT = ["x", "y", "w", "h", "lengths"]  # Use lowercase to match standard
+        outputs = [d["raw"] for d in data_dicts]
+        for o, p in zip(outputs, post):
+
             df = pd.DataFrame(p, columns=OUTPUT_FORMAT)
-            df.to_csv(res_dir + f"{i + 1:02}.csv", index=False)
+            df.to_csv(os.path.join(res_dir, o), index=False)
         t_save = time.time() - t0
         print(f"Saving done: {t_save:.2f} seconds")
 
