@@ -2,3 +2,5 @@
 /results
 /build
 /.idea
+/dist
+/ClusterDetector.spec
