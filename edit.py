@@ -5,7 +5,6 @@ import json
 import cv2
 import numpy as np
 import pandas as pd
-import tifffile
 import napari
 from PyQt6.QtWidgets import QApplication
 
@@ -23,8 +22,8 @@ class DataManager:
         self.cache = []
         for d in self.meta_list:
             print(d)
-            img = cv2.imread(os.path.join(self.root_dir, d["file"]))
-            raw_dets = pd.read_csv(os.path.join(self.root_dir, d["raw"])).to_numpy()
+            img = cv2.imread(str(os.path.join(self.root_dir, d["file"])))
+            raw_dets = pd.read_csv(str(os.path.join(self.root_dir, d["raw"]))).to_numpy()
             x = raw_dets[:, 0]
             y = raw_dets[:, 1]
             x2 = x + raw_dets[:, 2]
@@ -106,7 +105,7 @@ def run_editor(json_path):
     from napari.utils.notifications import show_info
     from qtpy.QtWidgets import QMessageBox
 
-    def setup_close_handler(viewer, session):
+    def setup_close_handler():
         # 1. Get the Qt Main Window
         main_window = viewer.window._qt_window
 
@@ -135,14 +134,14 @@ def run_editor(json_path):
                     det[:, 2] -= det[:, 0]
                     det[:, 3] -= det[:, 1]
                     df = pd.DataFrame(det, columns=['x', 'y', 'w', 'h'])
-                    df.to_csv(os.path.join(session.root_dir,i["edit"]), index=False)
+                    df.to_csv(str(os.path.join(session.root_dir,i["edit"])), index=False)
                 print("Saved!")
 
 
         # 4. Monkey Patch
         main_window.closeEvent = custom_close_event
 
-    setup_close_handler(viewer, session)
+    setup_close_handler()
 
     # --- START ---
     refresh_view()
