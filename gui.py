@@ -9,6 +9,7 @@ from PyQt6.QtCore import QTimer, Qt
 from multiprocessing import freeze_support  # <--- Add this import
 # Import the manager from your backend
 from detector import ClusterDetector, ResultOrganizer, JSON_FILE
+from edit import run_editor
 
 STATE_FILE = "directories.json"
 
@@ -153,15 +154,18 @@ class DetectorWindow(QWidget):
                 self.btn_edit.setText("Editing...")
 
                 # Start the external process
-                # self.editor_process = subprocess.Popen([sys.executable, "edit.py", self.edit_path])
+                # self.editor_process = subprocess.Popen([sys.executable, self.edit_path])
+                # run_editor(self.edit_path)
+                # self.thread = threading.Thread(target=self.start_processing, args=(self.source_dir, res_dir, m, M))
+                # self.editor_process.start()
                 if getattr(sys, 'frozen', False):
                     # We are running as an EXE
                     # Look for 'edit.exe' in the same folder as this executable
-                    exe_dir = os.path.dirname(sys.executable)
-                    editor_exe = os.path.join(exe_dir, "edit")  # Windows will find edit.exe
+                    # exe_dir = os.path.dirname(sys.executable)
+                    # editor_exe = os.path.join(exe_dir, "edit")  # Windows will find edit.exe
 
                     # We call the executable directly
-                    self.editor_process = subprocess.Popen([editor_exe, self.edit_path])
+                    self.editor_process = subprocess.Popen([sys.executable, self.edit_path])
                 else:
                     # We are running as a Python Script
                     self.editor_process = subprocess.Popen([sys.executable, "edit.py", self.edit_path])
@@ -207,8 +211,11 @@ class DetectorWindow(QWidget):
 
 # --- Entry Point ---
 if __name__ == "__main__":
-    freeze_support()
-    app = QApplication(sys.argv)
-    window = DetectorWindow()
-    window.show()
-    sys.exit(app.exec())
+    # freeze_support()
+    if len(sys.argv) > 1:
+        run_editor(sys.argv[1])
+    else:
+        app = QApplication(sys.argv)
+        window = DetectorWindow()
+        window.show()
+        sys.exit(app.exec())
