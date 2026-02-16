@@ -1,3 +1,6 @@
+# pyinstaller gui.py --onedir --windowed --name ClusterDetector --noconfirm --clean --collect-all napari --collect-all vispy --copy-metadata imageio --copy-metadata napari
+
+
 import sys
 import os
 import json
@@ -211,7 +214,7 @@ class DetectorWindow(QWidget):
 
 # --- Entry Point ---
 if __name__ == "__main__":
-    # freeze_support()
+    freeze_support()
     if len(sys.argv) > 1:
         run_editor(sys.argv[1])
     else:
