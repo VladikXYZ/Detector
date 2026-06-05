@@ -59,7 +59,7 @@ class DetectorWindow(QWidget):
         layout.addWidget(QLabel("Minimal size (nm):"), 2, 0)
 
         self.spin_min = QDoubleSpinBox()
-        self.spin_min.setRange(0.1, 50.0)
+        self.spin_min.setRange(0.1, 200.0)
         self.spin_min.setSingleStep(0.1)
         self.spin_min.setValue(1.0)
         layout.addWidget(self.spin_min, 2, 1)
@@ -72,7 +72,7 @@ class DetectorWindow(QWidget):
         layout.addWidget(QLabel("Maximal size (nm):"), 3, 0)
 
         self.spin_max = QDoubleSpinBox()
-        self.spin_max.setRange(0.1, 50.0)
+        self.spin_max.setRange(0.1, 200.0)
         self.spin_max.setSingleStep(0.1)
         self.spin_max.setValue(10.0)
         layout.addWidget(self.spin_max, 3, 1)
