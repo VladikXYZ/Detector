@@ -10,7 +10,6 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,
                              QGridLayout, QFileDialog, QDoubleSpinBox, QMessageBox)
 from PyQt6.QtCore import QTimer, Qt
 from multiprocessing import freeze_support  # <--- Add this import
-# Import the manager from your backend
 from detector import ClusterDetector, ResultOrganizer, JSON_FILE
 from edit import run_editor
 
@@ -118,7 +117,6 @@ class DetectorWindow(QWidget):
             QMessageBox.warning(self, "Error", "Minimal size must be smaller than maximal size.")
             return
 
-        # UI updates
         self.btn_process.setEnabled(False)
         self.btn_process.setText("Running...")
         self.save_last_dirs()
@@ -137,7 +135,6 @@ class DetectorWindow(QWidget):
 
 
     def start_editor(self):
-        # 1. Select File if not already selected
         if not self.edit_path:
             start_dir = self.output_dir if self.output_dir else ""
             self.edit_path, _ = QFileDialog.getOpenFileName(
@@ -151,33 +148,15 @@ class DetectorWindow(QWidget):
         if self.edit_path:
             self.save_last_dirs()
             try:
-                # print("editing")
-                # UI Update: Disable button
                 self.btn_edit.setEnabled(False)
                 self.btn_edit.setText("Editing...")
-
-                # Start the external process
-                # self.editor_process = subprocess.Popen([sys.executable, self.edit_path])
-                # run_editor(self.edit_path)
-                # self.thread = threading.Thread(target=self.start_processing, args=(self.source_dir, res_dir, m, M))
-                # self.editor_process.start()
                 if getattr(sys, 'frozen', False):
-                    # We are running as an EXE
-                    # Look for 'edit.exe' in the same folder as this executable
-                    # exe_dir = os.path.dirname(sys.executable)
-                    # editor_exe = os.path.join(exe_dir, "edit")  # Windows will find edit.exe
-
-                    # We call the executable directly
                     self.editor_process = subprocess.Popen([sys.executable, self.edit_path])
                 else:
-                    # We are running as a Python Script
                     self.editor_process = subprocess.Popen([sys.executable, "edit.py", self.edit_path])
-                # -----------------------------------
-                # Start checking if it's alive every 500ms
                 self.editor_timer.start(500)
 
             except Exception as e:
-                # Reset if it crashes immediately
                 self.btn_edit.setEnabled(True)
                 self.btn_edit.setText("Edit Results")
                 QMessageBox.critical(self, "Error", f"Could not launch editor:\n{e}")
@@ -201,18 +180,13 @@ class DetectorWindow(QWidget):
             json.dump({"source": self.source_dir, "output": self.output_dir, "edit": self.edit_path}, f)
 
     def check_editor_status(self):
-        # .poll() returns None if process is running, or an exit code if finished
         if self.editor_process and self.editor_process.poll() is not None:
             self.editor_timer.stop()
             self.editor_process = None
-
-            # Re-enable UI
             self.btn_edit.setEnabled(True)
             self.btn_edit.setText("Edit Results")
-            # Optional: print("Editor closed.")
 
 
-# --- Entry Point ---
 if __name__ == "__main__":
     freeze_support()
     if len(sys.argv) > 1:

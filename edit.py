@@ -6,10 +6,8 @@ import cv2
 import numpy as np
 import pandas as pd
 import napari
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
-
-# --- 1. DATA MANAGER (HANDLES CACHING & I/O) ---
 class DataManager:
     def __init__(self, json_path, viewer):
         self.root_dir = os.path.dirname(json_path)
@@ -28,7 +26,7 @@ class DataManager:
             y = raw_dets[:, 1]
             x2 = x + raw_dets[:, 2]
             y2 = y + raw_dets[:, 3]
-            p1 = np.stack([y, x], axis=1)  # Top-Left
+            p1 = np.column_stack([y, x])  # Top-Left
             p2 = np.stack([y2, x2], axis=1)  # Bottom-Right
 
             dets = np.stack([p1, p2], axis=1)
@@ -54,7 +52,6 @@ class DataManager:
         return False
 
 
-# --- 2. MAIN VIEWER LOGIC ---
 def run_editor(json_path):
     viewer = napari.Viewer(title="Detection Editor")
     session = DataManager(json_path, viewer)
@@ -62,16 +59,12 @@ def run_editor(json_path):
 
 
     def refresh_view():
-        """Updates the viewer with data from the session."""
         f, img, dets = session.current_img
-
-        # Update Image Layer
         if 'Image' in viewer.layers:
             viewer.layers['Image'].data = img
         else:
             viewer.add_image(img, name='Image')
 
-        # Update Shapes Layer
         if 'Detections' in viewer.layers:
             viewer.layers['Detections'].data = dets
         else:
@@ -102,19 +95,11 @@ def run_editor(json_path):
         else:
             viewer.status = "Start of experiment."
 
-    from napari.utils.notifications import show_info
-    from qtpy.QtWidgets import QMessageBox
-
     def setup_close_handler():
-        # 1. Get the Qt Main Window
         main_window = viewer.window._qt_window
+        # original_close_event = main_window.closeEvent
 
-        # 2. Store the ORIGINAL close event so we don't break Napari internals
-        original_close_event = main_window.closeEvent
-
-        # 3. Define our Custom Interceptor
         def custom_close_event(event):
-            # Prompt User
             msg = QMessageBox(main_window)
             msg.setWindowTitle("Save Changes?")
             msg.setText("Do you want to save changes to disk before quitting?")
@@ -124,7 +109,7 @@ def run_editor(json_path):
             reply = msg.exec_()
 
             if reply == QMessageBox.Cancel:
-                event.ignore()  # STOP CLOSING
+                event.ignore()
                 return
 
             if reply == QMessageBox.Yes:
@@ -134,26 +119,21 @@ def run_editor(json_path):
                     det[:, 2] -= det[:, 0]
                     det[:, 3] -= det[:, 1]
                     df = pd.DataFrame(det, columns=['x', 'y', 'w', 'h'])
-                    df.to_csv(str(os.path.join(session.root_dir,i["edit"])), index=False)
+                    df.to_csv(str(os.path.join(session.root_dir,i["raw"])), index=False)
                 print("Saved!")
 
 
-        # 4. Monkey Patch
         main_window.closeEvent = custom_close_event
 
     setup_close_handler()
 
-    # --- START ---
     refresh_view()
     napari.run()
 
 
 if __name__ == "__main__":
-    # Usage: python edit.py path/to/experiment.json
-    app = QApplication(sys.argv)  # Fix for some OS requiring Qt App
-
+    app = QApplication(sys.argv)
     path = sys.argv[1]
-
     if os.path.exists(path):
         run_editor(path)
     else:

@@ -27,15 +27,15 @@ class ResultOrganizer:
 
         json_info = []
         for i, (scale, png, file) in enumerate(zip(scales, pngs, files)):
-            file_name = f"{i+1:02}"
+            file_name = f"{i:02}"
             raw = file_name+"r.csv"
             edit = file_name+"e.csv"
             file_name += ".png"
-            new_info = {"file": file_name, "scale": scale,"org_file": file, "raw":raw, "edit":edit}
+            new_info = {"file": file_name, "scale": scale,"org_file": file, "raw":raw, "edit":edit, "count":-1}
             json_info.append(new_info)
             cv2.imwrite(dest+file_name, png, comp_params)
-
-        json.dump(json_info, open(dest+JSON_FILE, "w"),indent=1)
+        with open(dest+JSON_FILE, "w") as json_file:
+            json.dump(json_info,json_file ,indent=1)
 
     @staticmethod
     def _parse_scale(path):
@@ -69,62 +69,57 @@ class ClusterDetector:
     def process_sample(self, res_dir, m, M):
         self.m = m
         self.M = M
-
-        # 1. Start Total Timer
         total_start_time = time.time()
 
         with open(res_dir + JSON_FILE, "r") as f:
             data_dicts = json.load(f)
-        # print(data_dicts)
         for d in data_dicts:
             print(d)
-        # img_infos = [ImageInfo(**d) for d in data_dicts]
         files = [res_dir + d["file"] for d in data_dicts]
         scales = [d["scale"] for d in data_dicts]
 
-        cv2.setNumThreads(1)  # Good practice for multiprocessing
+        cv2.setNumThreads(1)
 
         with ProcessPoolExecutor() as executor:
-            # --- Preprocessing ---
             print("Starting Preprocessing...")
             t0 = time.time()
             prep = list(executor.map(self._preprocess, files))
             t_prep = time.time() - t0
             print(f"Preprocessing done: {t_prep:.2f} seconds")
 
-            # Save debug images (Optional to time this, but usually fast)
-            # for i, p in enumerate(prep):
-            #     cv2.imwrite(res_dir + f"{i + 1:02}" + "_prep.png", p)
-
-            # --- Processing (MSER) ---
             print("Starting Processing...")
             t0 = time.time()
             proc = list(executor.map(self._process, prep, scales))
             t_proc = time.time() - t0
             print(f"Processing done: {t_proc:.2f} seconds")
-            # --- Postprocessing (Filtering/Cleaning) ---
+
             print("Starting Postprocessing...")
             t0 = time.time()
-
-            # Note: Ensure _postprocess accepts (prep, proc, scales) arguments correctly
             post = list(executor.map(self._postprocess, prep, proc, scales, range(len(scales))))
             t_post = time.time() - t0
             t_post = time.time() - t0
             print(f"Postprocessing done: {t_post:.2f} seconds")
 
-        # --- Saving Results ---
         print("Saving CSVs...")
         t0 = time.time()
-        OUTPUT_FORMAT = ["x", "y", "w", "h", "lengths"]  # Use lowercase to match standard
-        outputs = [d["raw"] for d in data_dicts]
-        for o, p in zip(outputs, post):
-
+        OUTPUT_FORMAT = ["x", "y", "w", "h", "lengths"]
+        ALL_OUTPUT_FORMAT = ["x", "y", "w", "h", "lengths","scale", "from"]
+        # outputs = [d["raw"] for d in data_dicts]
+        all_detections = []
+        for i, (d, p) in enumerate(zip(data_dicts, post)):
+            n = len(p)
+            all_detections.append(np.column_stack((p,np.full((n,1),scales[i]), np.full((n,1),i))))
+            d["count"] = n
             df = pd.DataFrame(p, columns=OUTPUT_FORMAT)
-            df.to_csv(os.path.join(res_dir, o), index=False)
+            df.to_csv(str(os.path.join(res_dir, d["raw"])), index=False)
+
+        df = pd.DataFrame(np.concat(all_detections), columns=ALL_OUTPUT_FORMAT)
+        df.to_csv(str(os.path.join(res_dir, "all.csv")), index=False)
+        with open(res_dir+JSON_FILE, "w") as json_file:
+            json.dump(data_dicts, json_file, indent=1)
         t_save = time.time() - t0
         print(f"Saving done: {t_save:.2f} seconds")
 
-        # --- Final Report ---
         total_time = time.time() - total_start_time
         print("-" * 30)
         print(f"PIPELINE SUMMARY")
