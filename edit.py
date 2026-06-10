@@ -13,24 +13,31 @@ class DataManager:
         self.root_dir = os.path.dirname(json_path)
         self.viewer = viewer
         with open(json_path, "r") as f:
-            self.meta_list = json.load(f)
+            self.meta = json.load(f)
         self.idx = 0
-        self.total = len(self.meta_list)
+        self.total = len(self.meta)
         # files = [i["file"] for i in self.meta_list]
         self.cache = []
-        for d in self.meta_list:
-            print(d)
-            img = cv2.imread(str(os.path.join(self.root_dir, d["file"])))
-            raw_dets = pd.read_csv(str(os.path.join(self.root_dir, d["raw"]))).to_numpy()
-            x = raw_dets[:, 0]
-            y = raw_dets[:, 1]
-            x2 = x + raw_dets[:, 2]
-            y2 = y + raw_dets[:, 3]
-            p1 = np.column_stack([y, x])  # Top-Left
-            p2 = np.stack([y2, x2], axis=1)  # Bottom-Right
+        imgs = []
+        for file in self.meta["pngs"]:
+            imgs.append(cv2.imread(str(os.path.join(self.root_dir, file))))
+        raw_dets = pd.read_csv(str(os.path.join(self.root_dir, "all.csv"))).to_numpy()
+        x = raw_dets[:, 0]
+        y = raw_dets[:, 1]
+        x2 = x + raw_dets[:, 2]
+        y2 = y + raw_dets[:, 3]
+        p1 = np.stack([y, x], axis=1)  # Top-Left
+        p2 = np.stack([y2, x2], axis=1)  # Bottom-Right
+        det = np.stack([p1, p2], axis=1)
+        dets = []
 
-            dets = np.stack([p1, p2], axis=1)
-            self.cache.append([f, img, dets])
+        prev = 0
+        for ct in self.meta["counts"]:
+            dets.append(det[prev:prev+ct])
+            prev+=ct
+
+        for f, i, d in zip(self.meta["pngs"], imgs, dets):
+            self.cache.append([f, i, d])
 
 
     @property
@@ -114,12 +121,14 @@ def run_editor(json_path):
 
             if reply == QMessageBox.Yes:
                 print("Saving...")
-                for c,i in zip(session.cache, session.meta_list):
-                    det=np.asarray(c[2]).flatten().reshape(-1, 4)
-                    det[:, 2] -= det[:, 0]
-                    det[:, 3] -= det[:, 1]
-                    df = pd.DataFrame(det, columns=['x', 'y', 'w', 'h'])
-                    df.to_csv(str(os.path.join(session.root_dir,i["raw"])), index=False)
+                dets = []
+                for c,i in zip(session.cache, session.meta):
+                    dets.append(np.asarray(c[2]).flatten().reshape(-1, 4))
+
+                dets[:, 2] -= dets[:, 0]
+                dets[:, 3] -= dets[:, 1]
+                # df = pd.DataFrame(det, columns=['x', 'y', 'w', 'h'])
+                # df.to_csv(str(os.path.join(session.root_dir,i["raw"])), index=False)
                 print("Saved!")
 
 
