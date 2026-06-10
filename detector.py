@@ -15,27 +15,27 @@ U8_MAX = 255
 GAMMA = 0.5
 CLAHE_LIM = 2.5
 JSON_FILE = "metadata.json"
+OUTPUT_FORMAT = ["x", "y", "w", "h", "lengths","scale", "from"]
 
 class ResultOrganizer:
     @classmethod
     def organize(cls, src, dest):
-        files = [f for f in os.listdir(src) if f.endswith(".tif")]
-        paths = [os.path.join(src, f) for f in files]
-        scales = [cls._parse_scale(p) for p in paths]
-        pngs = [cls._convert_tif(p) for p in paths]
-        comp_params = [cv2.IMWRITE_PNG_COMPRESSION, 1]
+        if not os.path.exists(dest + JSON_FILE):
+            print("Organizing")
+            files = [f for f in os.listdir(src) if f.endswith(".tif")]
+            paths = [os.path.join(src, f) for f in files]
+            scales = [cls._parse_scale(p) for p in paths]
+            pngs = [cls._convert_tif(p) for p in paths]
+            comp_params = [cv2.IMWRITE_PNG_COMPRESSION, 1]
+            pngs_names = [f"{i:02}.png" for i in range(len(files))]
 
-        json_info = []
-        for i, (scale, png, file) in enumerate(zip(scales, pngs, files)):
-            file_name = f"{i:02}"
-            raw = file_name+"r.csv"
-            edit = file_name+"e.csv"
-            file_name += ".png"
-            new_info = {"file": file_name, "scale": scale,"org_file": file, "raw":raw, "edit":edit, "count":-1}
-            json_info.append(new_info)
-            cv2.imwrite(dest+file_name, png, comp_params)
-        with open(dest+JSON_FILE, "w") as json_file:
-            json.dump(json_info,json_file ,indent=1)
+            for png, name in zip(pngs, pngs_names):
+                cv2.imwrite(dest+name, png, comp_params)
+
+            json_info = {"ogs": files, "pngs":pngs_names, "scales":scales, "counts":[-1 for _ in range(len(files))]}
+            with open(dest+JSON_FILE, "w") as json_file:
+                json.dump(json_info,json_file, indent=2)
+        else: print("Passed")
 
     @staticmethod
     def _parse_scale(path):
@@ -72,13 +72,11 @@ class ClusterDetector:
         total_start_time = time.time()
 
         with open(res_dir + JSON_FILE, "r") as f:
-            data_dicts = json.load(f)
-        for d in data_dicts:
-            print(d)
-        files = [res_dir + d["file"] for d in data_dicts]
-        scales = [d["scale"] for d in data_dicts]
-
-        cv2.setNumThreads(1)
+            data_dict = json.load(f)
+        files = [res_dir+file for file in data_dict["pngs"]]
+        print(files)
+        scales = data_dict["scales"]
+        # cv2.setNumThreads(1) # seems that now it is working without
 
         with ProcessPoolExecutor() as executor:
             print("Starting Preprocessing...")
@@ -100,34 +98,33 @@ class ClusterDetector:
             t_post = time.time() - t0
             print(f"Postprocessing done: {t_post:.2f} seconds")
 
-        print("Saving CSVs...")
+        print("Saving CSV...")
         t0 = time.time()
-        OUTPUT_FORMAT = ["x", "y", "w", "h", "lengths"]
-        ALL_OUTPUT_FORMAT = ["x", "y", "w", "h", "lengths","scale", "from"]
-        # outputs = [d["raw"] for d in data_dicts]
-        all_detections = []
-        for i, (d, p) in enumerate(zip(data_dicts, post)):
-            n = len(p)
-            all_detections.append(np.column_stack((p,np.full((n,1),scales[i]), np.full((n,1),i))))
-            d["count"] = n
-            df = pd.DataFrame(p, columns=OUTPUT_FORMAT)
-            df.to_csv(str(os.path.join(res_dir, d["raw"])), index=False)
 
-        df = pd.DataFrame(np.concat(all_detections), columns=ALL_OUTPUT_FORMAT)
+        all_detections = []
+        counts = []
+        for i, p in enumerate(post):
+            n = len(p)
+            counts.append(n)
+            all_detections.append(np.column_stack((p,np.full((n,1),scales[i]), np.full((n,1),i))))
+
+        df = pd.DataFrame(np.concat(all_detections), columns=OUTPUT_FORMAT)
         df.to_csv(str(os.path.join(res_dir, "all.csv")), index=False)
+
+        data_dict["counts"] = counts
         with open(res_dir+JSON_FILE, "w") as json_file:
-            json.dump(data_dicts, json_file, indent=1)
+            json.dump(data_dict, json_file, indent=1)
         t_save = time.time() - t0
-        print(f"Saving done: {t_save:.2f} seconds")
+        print(f"Saving done: {t_save:.3f} seconds")
 
         total_time = time.time() - total_start_time
         print("-" * 30)
         print(f"PIPELINE SUMMARY")
-        print(f"Preprocessing:  {t_prep:6.2f}s")
-        print(f"Processing:     {t_proc:6.2f}s")
-        print(f"Postprocessing: {t_post:6.2f}s")
-        print(f"Saving:         {t_save:6.2f}s")
-        print(f"TOTAL TIME:     {total_time:6.2f}s")
+        print(f"Preprocessing:  {t_prep:6.3f}s")
+        print(f"Processing:     {t_proc:6.3f}s")
+        print(f"Postprocessing: {t_post:6.3f}s")
+        print(f"Saving:         {t_save:6.3f}s")
+        print(f"TOTAL TIME:     {total_time:6.3f}s")
         print("-" * 30)
 
     @staticmethod
