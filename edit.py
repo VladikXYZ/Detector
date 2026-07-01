@@ -63,7 +63,24 @@ def run_editor(json_path):
     viewer = napari.Viewer(title="Detection Editor")
     session = DataManager(json_path, viewer)
 
+    # --- UNDO SYSTEM VARIABLES ---
+    undo_stack = []
+    is_undoing = False
 
+    def push_state(event=None):
+        """Saves the current state of the bounding boxes to the history stack."""
+        nonlocal is_undoing
+        if is_undoing or 'Detections' not in viewer.layers:
+            return
+
+        # Make a deep copy of the current bounding boxes
+        layer_data = viewer.layers['Detections'].data
+        current_data = [np.copy(box) for box in layer_data]
+        undo_stack.append(current_data)
+
+        # Limit history to the last 30 actions to prevent memory bloat
+        if len(undo_stack) > 16:
+            undo_stack.pop(0)
 
     def refresh_view():
         f, img, dets = session.current_img
@@ -84,6 +101,19 @@ def run_editor(json_path):
                 name='Detections'
             )
 
+            # --- UNDO SYSTEM HOOK ---
+            undo_stack.clear()
+            is_undoing = False
+
+            det_layer = viewer.layers['Detections']
+            # Listen for any changes (add, delete, move) and push to stack
+            if push_state not in det_layer.events.data.callbacks:
+                det_layer.events.data.connect(push_state)
+
+            # Push the initial, unedited state of the new image
+            push_state()
+            # ------------------------
+
         viewer.status = f"Image {session.idx + 1}/{session.total}: {f}"
 
 
@@ -101,6 +131,28 @@ def run_editor(json_path):
             refresh_view()
         else:
             viewer.status = "Start of experiment."
+
+    @viewer.bind_key('Control-Z')
+    def custom_undo(v):
+        nonlocal is_undoing
+
+        # We need at least 2 states to undo (the current one, and the previous one)
+        if len(undo_stack) > 1:
+            print(len(undo_stack))
+            is_undoing = True
+
+            # Pop (remove) the current messed-up state
+            undo_stack.pop()
+
+
+            # Grab the previous state and apply it
+            prev_data = [np.copy(box) for box in undo_stack[-1]]
+            viewer.layers['Detections'].data = prev_data
+
+            is_undoing = False
+            viewer.status = "Undo applied."
+        else:
+            viewer.status = "Nothing to undo on this image."
 
     def setup_close_handler():
         main_window = viewer.window._qt_window
