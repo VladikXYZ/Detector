@@ -19,8 +19,8 @@ OUTPUT_FORMAT = ["x", "y", "w", "h", "lengths","scale", "from"]
 
 class ResultOrganizer:
     @classmethod
-    def organize(cls, src, dest):
-        if not os.path.exists(dest + JSON_FILE):
+    def organize(cls, src, dest, force = False):
+        if not os.path.exists(dest + JSON_FILE) or force:
             print("Organizing")
             files = [f for f in os.listdir(src) if f.endswith(".tif")]
             paths = [os.path.join(src, f) for f in files]

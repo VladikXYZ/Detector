@@ -129,7 +129,7 @@ class DetectorWindow(QWidget):
 
 
     def start_processing(self, src, res_dir, m, M):
-        ResultOrganizer.organize(src+"/", res_dir)
+        ResultOrganizer.organize(src+"/", res_dir, False)
         self.detector.process_sample(res_dir, m, M)
 
 
