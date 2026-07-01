@@ -8,6 +8,11 @@ import pandas as pd
 import napari
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
+ACTIONS = set(["changed", "added", "removed", "init"])
+
+class Ghost:
+    def __init__(self): self.action = "init"
+
 class DataManager:
     def __init__(self, json_path, viewer):
         self.root_dir = os.path.dirname(json_path)
@@ -70,8 +75,9 @@ def run_editor(json_path):
     def push_state(event=None):
         """Saves the current state of the bounding boxes to the history stack."""
         nonlocal is_undoing
-        if is_undoing or 'Detections' not in viewer.layers:
-            return
+        if is_undoing or 'Detections' not in viewer.layers: return
+
+        if event.action not in ACTIONS: return
 
         # Make a deep copy of the current bounding boxes
         layer_data = viewer.layers['Detections'].data
@@ -111,7 +117,8 @@ def run_editor(json_path):
                 det_layer.events.data.connect(push_state)
 
             # Push the initial, unedited state of the new image
-            push_state()
+            push_state(Ghost())
+            print(len(undo_stack))
             # ------------------------
 
         viewer.status = f"Image {session.idx + 1}/{session.total}: {f}"
