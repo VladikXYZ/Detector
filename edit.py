@@ -10,9 +10,6 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 
 ACTIONS = set(["changed", "added", "removed", "init"])
 
-class Ghost:
-    def __init__(self): self.action = "init"
-
 class DataManager:
     def __init__(self, json_path, viewer):
         self.root_dir = os.path.dirname(json_path)
@@ -40,14 +37,20 @@ class DataManager:
         for ct in self.meta["counts"]:
             dets.append(det[prev:prev+ct])
             prev+=ct
-
+        self.stacks = []
         for f, i, d in zip(self.meta["pngs"], imgs, dets):
+            # d = [np.copy(box) for box in d]
+            d = d[:4]
             self.cache.append([f, i, d])
+            self.stacks.append([d])
 
 
     @property
     def current_img(self):
         return self.cache[self.idx]
+    @property
+    def current_stack(self):
+        return self.stacks[self.idx]
 
     def next(self):
         if self.idx < self.total - 1:
@@ -69,16 +72,18 @@ def run_editor(json_path):
     session = DataManager(json_path, viewer)
 
     # --- UNDO SYSTEM VARIABLES ---
-    undo_stack = []
+    # undo_stack = session.current_stack
+    # print(undo_stack)
     is_undoing = False
 
     def push_state(event=None):
         """Saves the current state of the bounding boxes to the history stack."""
         nonlocal is_undoing
-        if is_undoing or 'Detections' not in viewer.layers: return
+        if is_undoing or 'Detections' not in viewer.layers or event.action not in ACTIONS: return
 
-        if event.action not in ACTIONS: return
-
+        undo_stack = session.current_stack
+        # print(len(undo_stack))
+        # print(event.action)
         # Make a deep copy of the current bounding boxes
         layer_data = viewer.layers['Detections'].data
         current_data = [np.copy(box) for box in layer_data]
@@ -90,6 +95,9 @@ def run_editor(json_path):
 
     def refresh_view():
         f, img, dets = session.current_img
+        # print([ len(x) for x in session.stacks])
+        undo_stack = session.current_stack
+        # print(undo_stack)
         if 'Image' in viewer.layers:
             viewer.layers['Image'].data = img
         else:
@@ -108,18 +116,13 @@ def run_editor(json_path):
             )
 
             # --- UNDO SYSTEM HOOK ---
-            undo_stack.clear()
+            # undo_stack.clear()
             is_undoing = False
 
             det_layer = viewer.layers['Detections']
             # Listen for any changes (add, delete, move) and push to stack
             if push_state not in det_layer.events.data.callbacks:
                 det_layer.events.data.connect(push_state)
-
-            # Push the initial, unedited state of the new image
-            push_state(Ghost())
-            print(len(undo_stack))
-            # ------------------------
 
         viewer.status = f"Image {session.idx + 1}/{session.total}: {f}"
 
@@ -142,15 +145,15 @@ def run_editor(json_path):
     @viewer.bind_key('Control-Z')
     def custom_undo(v):
         nonlocal is_undoing
-
+        undo_stack = session.current_stack
+        print(len(undo_stack))
         # We need at least 2 states to undo (the current one, and the previous one)
         if len(undo_stack) > 1:
-            print(len(undo_stack))
+
             is_undoing = True
 
             # Pop (remove) the current messed-up state
             undo_stack.pop()
-
 
             # Grab the previous state and apply it
             prev_data = [np.copy(box) for box in undo_stack[-1]]
