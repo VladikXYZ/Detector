@@ -35,12 +35,15 @@ class DataManager:
 
         prev = 0
         for ct in self.meta["counts"]:
-            dets.append(det[prev:prev+ct])
+            cur = det[prev:prev+ct]
+            # print(len(cur))
+            # print(cur)
+            dets.append(cur)
             prev+=ct
         self.stacks = []
         for f, i, d in zip(self.meta["pngs"], imgs, dets):
             # d = [np.copy(box) for box in d]
-            d = d[:4]
+            # d = d[:4]
             self.cache.append([f, i, d])
             self.stacks.append([d])
 
@@ -184,13 +187,25 @@ def run_editor(json_path):
             if reply == QMessageBox.Yes:
                 print("Saving...")
                 dets = []
-                for c,i in zip(session.cache, session.meta):
-                    dets.append(np.asarray(c[2]).flatten().reshape(-1, 4))
+                for i,c in enumerate(session.cache):
+                    print(c[2][:4].flatten().reshape(-1, 4))
+                    # print(m)
+                    det = np.asarray(c[2]).flatten().reshape(-1, 4)
+                    n = len(det)
+                    length = np.sqrt(det[:,2]*det[:,3])
+                    scale = np.ones(n)*session.meta["scales"][i]
+                    fr = np.ones(n)*i
+                    session.meta["counts"][i] = n
+                    dets.append(np.column_stack((det,length, scale, fr)))
 
+                dets = np.concat(dets)
+                dets[:, [0, 1, 2, 3]] = dets[:, [1, 0, 3, 2]]
                 dets[:, 2] -= dets[:, 0]
                 dets[:, 3] -= dets[:, 1]
-                # df = pd.DataFrame(det, columns=['x', 'y', 'w', 'h'])
-                # df.to_csv(str(os.path.join(session.root_dir,i["raw"])), index=False)
+                df = pd.DataFrame(dets, columns=['x', 'y', 'w', 'h', "length", "scale", "from"])
+                # print(i["raw"])
+                df.to_csv(str(os.path.join(session.root_dir,"all.csv")), index=False)
+                # raw_dets = pd.read_csv(str(os.path.join(self.root_dir, "all.csv"))).to_numpy()
                 print("Saved!")
 
 

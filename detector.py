@@ -125,19 +125,23 @@ class ClusterDetector:
         print(f"Postprocessing: {t_post:6.3f}s")
         print(f"Saving:         {t_save:6.3f}s")
         print(f"TOTAL TIME:     {total_time:6.3f}s")
+        print(f"TOTAL DETS:     {sum(counts)}")
         print("-" * 30)
 
     @staticmethod
     def _preprocess(f):
         img = cv2.imread(f, cv2.IMREAD_UNCHANGED)
-        denoised = cv2.bilateralFilter(img, 2, 25, 30)
-        # clahe_obj = cv2.createCLAHE(clipLimit=CLAHE_LIM)
-        # clahed =  clahe_obj.apply(denoised.astype(dtype=np.uint8))
-        inverted = U8_MAX - denoised
+        # denoised = cv2.bilateralFilter(img, 2, 25, 30)
+        clahe_obj = cv2.createCLAHE(clipLimit=CLAHE_LIM)
+        clahed =  clahe_obj.apply(img.astype(dtype=np.uint8))
+        inverted = U8_MAX - clahed
         # th, mask = cv2.threshold(inverted, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         mask = np.where(inverted >= 160, 1, 0)
         result = mask * inverted
-        return result.astype(dtype=np.uint8)
+        result = result.astype(dtype=np.uint8)
+        cv2.imwrite(f"{f[:-6]}prep{f[-6:]}", result)
+        # print(f"written to: {os.getcwd()}prep{f}")
+        return result
 
     def _process(self, img, scale):
         ma = max(1, int((self.m*scale / 2) ** 2 * np.pi))
@@ -150,6 +154,7 @@ class ClusterDetector:
         return bboxes, np.asarray(locs, dtype=object)
 
     def _postprocess(self, img, processed, scale, idx):
+        return np.column_stack((processed[0], np.ones(len(processed[0]))))
         lx, uy = 5, 5
         rx, by = img.shape[1] - lx, img.shape[0] - uy
         detections, locs = processed
