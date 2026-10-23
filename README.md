@@ -43,5 +43,3 @@ Then run:
 python gui.py
 
 ```
-
-*** *Tip: If you plan to put this on GitHub, save this text as exactly `README.md` so the website automatically displays it on your repository's front page.*
